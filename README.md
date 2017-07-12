@@ -51,10 +51,11 @@ $ source myvenv/bin/activate
     (myvenv) > python soybean.py -x expression-2011.csv -i gene-list.csv -g grn.xml -p 10
     ```
     Let's break it down:
-        * Option `-x`: Use the expression file `expression-2011.csv`.
-        * Option `-i`: Use the gene list file `gene-list.csv`.
-        * Option `-g`: Save the inferred network in file `grn.xml`.
-        * Option `-p`: Aggregate 10 perturbed runs in the inferred network.
+    * Option `-x`: Use the expression file `expression-2011.csv`.
+    * Option `-i`: Use the gene list file `gene-list.csv`.
+    * Option `-g`: Save the inferred network in file `grn.xml`.
+    * Option `-p`: Aggregate 10 perturbed runs in the inferred network.
+
     The default values for `-x` and `-g` are `expression-2011.csv` and `grn.xml`. So one can run the following command instead and get equivalent result.
     ```
     (myvenv) > python soybean.py -i gene-list.csv -p 10
@@ -62,8 +63,9 @@ $ source myvenv/bin/activate
     Note if the output file `grn.xml` already exists, it will be overwritten.
 
 1. Open `grn.xml` with `Cytoscape`.
-        1. Install and open `Cytoscape`.
-        1. Open network from network file `grn.xml`.
-        1. Go to `File -> Import -> Styles... ` and select `styles-soybean.xml` to import the style.
-        1. Go to `Control panel -> Style` and select `soybean` to apply the style.
+    1. Install and open `Cytoscape`.
+    1. Open network from network file `grn.xml`.
+    1. Go to `File -> Import -> Styles... ` and select `styles-soybean.xml` to import the style.
+    1. Go to `Control panel -> Style` and select `soybean` to apply the style.
+
     You can change the layout of the network by, e.g., going to `Layout -> Attribute Circle Layout -> shared name`.
