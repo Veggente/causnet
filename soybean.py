@@ -67,6 +67,15 @@ def main(argv):
             [-g] <GraphML_file> [-v] [-F] [-x] <expression_file>
 
             -r      Pseudorandom number generator seed.
+            -c      Subset of data with particular photoperiod. Can be
+                    'LD', 'SD' or 'Sh'. The default is all the data.
+            -l      The number of time lags for network inference. The
+                    default is 1.
+            -m      The maximum in-degree ofthe network. The default is
+                    3.
+            -f      The significance level for edge rejection based on
+                    Granger causality. The default is 0.05.
+            -u      Input file to specify gene clusters.
             -v      Virtual time shift: replicate the first time and append
                     it to the end in order to close the loop from the last
                     time to the first time the next day.
