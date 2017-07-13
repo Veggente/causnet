@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import sys
 import getopt
 import numpy as np
-import caspian as ca
+import causnet_blsr as ca
 from tqdm import tqdm
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
