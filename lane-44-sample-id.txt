@@ -1,0 +1,24 @@
+Photothemal Genotype TimePoint Replicate
+01 1 5 H A
+02 1 5 J A
+03 2 5 H A
+04 2 5 J A
+05 3 5 H A
+06 3 5 J A
+07 4 5 H A
+08 4 5 J A
+09 5 5 H A
+10 5 5 J A
+11 6 5 H A
+12 6 5 J A
+13 7 5 H A
+14 7 5 J A
+15 8 5 H A
+16 8 5 J A
+17 9 5 H A
+18 9 5 J A
+19 1 1 L B
+20 3 4 Q A
+21 6 2 K A
+22 6 5 R A
+23 1 4 G A

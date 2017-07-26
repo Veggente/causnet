@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import sys
 import getopt
 import numpy as np
-import causnet_blsr as ca
+import caspian as ca
 from tqdm import tqdm
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
@@ -15,6 +15,8 @@ import json
 import ast
 import math
 import scipy.stats
+import itertools
+import anova
 
 
 def main(argv):
@@ -25,6 +27,12 @@ def main(argv):
     photoperiod_set = ['LD', 'SD', 'Sh']
     strain_set = ['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7']
     time_point_set = ['T1', 'T3', 'T5']
+    cond_list = [
+        [16, 25, 32],
+        ['LD', 'SD', 'Sh'],
+        [1, 2, 3, 4, 5],
+        ['II1', 'II2', 'II3', 'II4', 'II5', 'II6']
+        ]
     # Self-regulation in Granger causality inference.
     self_reg = True
     num_time_lags = 1
@@ -52,12 +60,13 @@ def main(argv):
     f_test = False
     # TODO: Use argparse instead of getopt.
     try:
-        opts, args = getopt.getopt(argv,
-                                   'p:c:i:sl:m:f:r:u:o:e:a:t:ndT:M:E:g:vFx:')
+        opts, args = getopt.getopt(
+            argv, 'p:c:i:sl:m:f:r:u:o:e:a:t:ndT:M:E:g:vFx:'
+            )
     except getopt.GetoptError as e:
         print(str(e))
         print(
-            """Usage: ./soybean.py [-r] <random_seed> [-c] <photoperiod>
+            """Usage: ./soybean.py [-r] <random_seed> [-c] <cond_list_file>
             [-p] <num_perturb> [-l] <num_time_lags> [-m]
             <max_in_degree> [-f] <significance_level> [-i]
             <gene_list_file> [-u] <clustering_file>
@@ -67,8 +76,11 @@ def main(argv):
             [-g] <GraphML_file> [-v] [-F] [-x] <expression_file>
 
             -r      Pseudorandom number generator seed.
-            -c      Subset of data with particular photoperiod. Can be
-                    'LD', 'SD' or 'Sh'. The default is all the data.
+            -c      Condition list file.
+                    This is a JSON format file of a list of lists
+                    specifying the conditions of the samples to do
+                    network analysis on. The order of the lists should
+                    be compatible with the parser.
             -l      The number of time lags for network inference. The
                     default is 1.
             -m      The maximum in-degree ofthe network. The default is
@@ -92,8 +104,8 @@ def main(argv):
             num_perturb = int(arg)
         # Single photoperiod condition.
         elif opt == '-c':
-            photoperiod_set = [arg]
-            print('Photoperiod condition:', arg)
+            with open(arg, 'r') as f:
+                cond_list = json.load(f)
         #elif opt == '-s':
         #    self_reg = True
         elif opt == '-l':
@@ -159,9 +171,12 @@ def main(argv):
         exit(1)
     gene_list = read_gene(gene_list_file)
     if not json_in_file:
-        data_cell, data_var = extract_data(
-            gene_list, expression_file, photoperiod_set, strain_set,
-            time_point_set, clustering_indicator, f_test, num_replicates
+        #data_cell, data_var = extract_data(
+        #    gene_list, expression_file, photoperiod_set, strain_set,
+        #    time_point_set, clustering_indicator, f_test, num_replicates
+        #    )
+        data_cell, data_var = extract_data_new(
+            gene_list, expression_file, cond_list
             )
         if vts:
             data_cell = virtual_time_shift(data_cell)
@@ -639,8 +654,10 @@ def extract_data(gene_list, expression_file, photoperiod_set, strain_set,
         print('Gene list:', gene_list.make_gene_id_set())
         for gene in gene_list.genes:
             print('Gene ID is', gene.id)
-            f_stat, dof = anova(expression, gene.id, photoperiod_set,
-                                strain_set, time_point_set, num_replicates)
+            f_stat, dof = anova_old(
+                expression, gene.id, photoperiod_set, strain_set,
+                time_point_set, num_replicates
+                )
             print('F-statistic is', f_stat)
             print('DOF is', dof)
             print('p-value is', 1-scipy.stats.f.cdf(f_stat, dof[0], dof[1]),
@@ -988,8 +1005,8 @@ def virtual_time_shift(data):
     return [np.concatenate((x, [x[0]]), axis=0) for x in data]
 
 
-def anova(expression, gene_id, photoperiod_set, strain_set, time_point_set,
-          num_replicates):
+def anova_old(expression, gene_id, photoperiod_set, strain_set,
+              time_point_set, num_replicates):
     """One-way analysis of variance (ANOVA) using F-test."""
     num_groups = len(photoperiod_set)*len(strain_set)*len(time_point_set)
     group_size = num_replicates
@@ -1032,6 +1049,132 @@ def convert_csv(csv_white, csv_comma=''):
                 f_comma.write(','.join(line.split()))
                 f_comma.write('\n')
     return None
+
+
+def extract_data_new(
+    gene_list, expression_file, cond_list
+    ):
+    """Extract expression data from file.
+    
+    Args:
+        gene_list: A GeneList object of the selected genes.
+        expression_file: A path to the expression file.
+        cond_list: A list of lists of conditions.
+            The last list is for the sample times,
+            which must be in order. For example,
+            cond_list = [
+                [16, 25],
+                ['LD', 'SD'],
+                [1, 2, 3, 4],
+                ['I1', 'D0', 'I3', 'I4', 'I5', 'I6']
+                ]
+
+    Returns:
+        A 2-tuple of lists of 2-d numpy arrays.
+        Both lists are indexed by the unstructured
+        condition in arbitrary order. The elements
+        in both lists are 2-d numpy arrays with
+        sample time index as the first axis and
+        gene index as the second axis. The values
+        of the arrays in the first list are the
+        mean expression levels, and those in the
+        second list are variance of the mean
+        expression levels.
+    """
+    data_mean = []
+    data_var = []
+    # Create a shallow copy of the gene list for
+    # counting purpose.
+    gene_ids_remaining = gene_list.make_gene_id_set()
+    # Dictionary with gene-time-condition 3-tuple as
+    # key and expression list for all replicates as
+    # value.
+    expression = {}
+    with open(expression_file, 'r') as f:
+        # First line is the list of the sample IDs.
+        # Remove trailing newline and leading empty
+        # element.
+        sample_ids_str = f.readline().strip().split(',')[1:]
+        # Parse the sample IDs to get the conditions.
+        # The last condition must be the sample time.
+        # The other are the unstructured conditions to
+        # create experimental perturbation, which can
+        # also be selected as subset of data. At least
+        # two replicates are needed for each sample
+        # condition for the bootstrapping
+        # perturbation/stability analysis.
+        sample_ids = [
+            anova.sample_id_parser_compact(sid_str)
+            for sid_str in sample_ids_str
+            ]
+        for line in f:
+            exp = line.strip().split(',')
+            gene_id = exp[0]
+            exp_str_list = exp[1:]
+            if gene_id in gene_ids_remaining:
+                for idx_sid, sid in enumerate(sample_ids):
+                    # Check if current sample is in
+                    # the condition list.
+                    is_in_cond_list = True
+                    for idx_cond, cond in enumerate(sid):
+                        if cond not in cond_list[idx_cond]:
+                            is_in_cond_list = False
+                            break
+                    if not is_in_cond_list:
+                        continue
+                    # Otherwise this sample is in the
+                    # condition list. We now read the
+                    # expression level into the 
+                    # dictionary. We append to the
+                    # dictionary if the key already
+                    # exists, or create a new entry
+                    # if it does not.
+                    sample_time = sid[-1]
+                    other_cond = sid[:-1]
+                    exp_key = (
+                        gene_id, sample_time, other_cond
+                        )
+                    if exp_key in expression:
+                        expression[exp_key].append(
+                            float(exp_str_list[idx_sid])
+                            )
+                    else:
+                        expression[exp_key] = [
+                            float(exp_str_list[idx_sid])
+                            ]
+                # Remove the gene from the remaining
+                # gene list.
+                gene_ids_remaining.remove(gene_id)
+    # Generate average and variance.
+    # Use itertools.product() and argument unpacking
+    # instead of nested loops.
+    time_point_set = cond_list[-1]
+    num_time_points = len(time_point_set)
+    num_genes = len(gene_list.genes)
+    for idx_oc, other_cond in enumerate(
+            itertools.product(*cond_list[:-1])
+            ):
+        data_mean.append(np.empty((
+            num_time_points, num_genes
+            )))
+        data_var.append(np.empty((
+            num_time_points, num_genes
+            )))
+        for idx_g, gene in enumerate(gene_list.genes):
+            for idx_t, time_point in enumerate(
+                    time_point_set
+                    ):
+                exp_key = (
+                    gene.id, time_point, other_cond
+                    )
+                replicates = expression[exp_key]
+                data_mean[idx_oc][idx_t, idx_g] = (
+                    np.mean(replicates)
+                    )
+                data_var[idx_oc][idx_t, idx_g] = (
+                    sample_mean_var(replicates)
+                    )
+    return data_mean, data_var
 
 
 if __name__ == "__main__":
