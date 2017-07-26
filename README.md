@@ -10,10 +10,9 @@ A network analysis protocol for soybean
 > conda create --name myvenv matplotlib networkx scipy tqdm
 ```
 
-3. Activate the environment
+3. Activate the environment by typing
 ```
 > activate myvenv
-(myvenv) >
 ```
 Notice `(myvenv)` at the beginning of the prompt indicates the environment named `myvenv` is active.
 ## For Unix users (macOS and Linux)
