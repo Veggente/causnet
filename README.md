@@ -5,9 +5,9 @@ A network analysis protocol for soybean
 ## For Windows users
 1. Download [`Miniconda` installer](https://conda.io/miniconda.html) with `Python 3` for Windows.
 
-2. Open the Anaconda prompt and create a virtual environment with `matplotlib`, `networkx`, `scipy` and `tqdm` packages.
+2. Open the Anaconda prompt and create a virtual environment with `matplotlib`, `networkx`, `scipy`, `tqdm`, `pandas` and `xlrd` packages.
 ```
-> conda create --name myvenv matplotlib networkx scipy tqdm
+> conda create --name myvenv matplotlib networkx scipy tqdm pandas xlrd
 ```
 
 3. Activate the environment by typing
@@ -32,10 +32,10 @@ $ source myvenv/bin/activate
 ```
 
 # Network analysis
-1. Obatin the normalized gene expression file `expression-2017.csv`.
+1. Obtain the normalized gene expression file `expression-2017.csv`.
 1. Generate the gene list file.
 
-    Create a spreadsheet with two columns using Excel or Numbers. The first column is the list of the gene IDs and the second column is the list of the gene names. Then save the table as `gene-list.csv` in CSV (comma-separated values) format. An example of the generated CSV file looks like this.
+    Create a spreadsheet with two columns using Excel or other spreadsheet applications. The first column is the list of the gene IDs and the second column is the list of the gene names. Then save the table as `gene-list.csv` in CSV (comma-separated values) format. An example of the generated CSV file looks like this.
     
     `gene-list.csv`:
     
@@ -54,10 +54,7 @@ $ source myvenv/bin/activate
     * Option `-i`: Use the gene list file `gene-list.csv`.
     * Option `-g`: Save the inferred network in file `grn.xml`.
     * Option `-p`: Aggregate 10 perturbed runs in the inferred network. Larger number of perturbations gives more reliable network reconstruction, but also takes more time to compute. On a laptop 10 perturbations of a 40-gene network take ~5 minutes.
-    * Option `-c`: Condition list file. This is a JSON format file of a list of lists
-                    specifying the conditions of the samples to do
-                    network analysis on. The order of the lists should
-                    be compatible with the parser.
+    * Option `-c`: Condition list file. This is a JSON format file of a list of lists specifying the conditions of the samples to do network analysis on. The order of the lists should be compatible with the parser.
     
     Note if the output file `grn.xml` already exists, it will be overwritten.
     
