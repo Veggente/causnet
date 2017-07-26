@@ -48,19 +48,22 @@ $ source myvenv/bin/activate
     ```
 1. Run the gene regulatory network inference algorithm.
     ```
-    (myvenv) > python soybean.py -x expression-2011.csv -i gene-list.csv -g grn.xml -p 10
+    (myvenv) > python soybean.py -x expression-2011.csv -i gene-list.csv -g grn.xml -p 10 -c cond_list_file.txt
     ```
     Let's break it down:
     * Option `-x`: Use the expression file `expression-2011.csv`.
     * Option `-i`: Use the gene list file `gene-list.csv`.
     * Option `-g`: Save the inferred network in file `grn.xml`.
     * Option `-p`: Aggregate 10 perturbed runs in the inferred network. Larger number of perturbations gives more reliable network reconstruction, but also takes more time to compute. On a laptop 10 perturbations of a 40-gene network take ~5 minutes.
+    * Option `-c`: Condition list file. This is a JSON format file of a list of lists
+                    specifying the conditions of the samples to do
+                    network analysis on. The order of the lists should
+                    be compatible with the parser.
     
     Note if the output file `grn.xml` already exists, it will be overwritten.
     
     Some other options are as follows.
     * Option `-r`: Seed for the random number generator.
-    * Option `-c`: Subset of data with particular photoperiod. Can be 'LD', 'SD' or 'Sh'. The default is all the data.
     * Option `-l`: The number of time lags for network inference. The default is 1.
     * Option `-m`: The maximum in-degree ofthe network. The default is 3.
     * Option `-f`: The significance level for edge rejection based on Granger causality. The default is 0.05.
