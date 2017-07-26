@@ -33,7 +33,7 @@ $ source myvenv/bin/activate
 ```
 
 # Network analysis
-1. Obatin the normalized gene expression file `expression-2011.csv`.
+1. Obatin the normalized gene expression file `expression-2017.csv`.
 1. Generate the gene list file.
 
     Create a spreadsheet with two columns using Excel or Numbers. The first column is the list of the gene IDs and the second column is the list of the gene names. Then save the table as `gene-list.csv` in CSV (comma-separated values) format. An example of the generated CSV file looks like this.
@@ -48,10 +48,10 @@ $ source myvenv/bin/activate
     ```
 1. Run the gene regulatory network inference algorithm.
     ```
-    (myvenv) > python soybean.py -x expression-2011.csv -i gene-list.csv -g grn.xml -p 10 -c cond_list_file.txt
+    (myvenv) > python soybean.py -x expression-2017.csv -i gene-list.csv -g grn.xml -p 10 -c cond_list_file.txt
     ```
     Let's break it down:
-    * Option `-x`: Use the expression file `expression-2011.csv`.
+    * Option `-x`: Use the expression file `expression-2017.csv`.
     * Option `-i`: Use the gene list file `gene-list.csv`.
     * Option `-g`: Save the inferred network in file `grn.xml`.
     * Option `-p`: Aggregate 10 perturbed runs in the inferred network. Larger number of perturbations gives more reliable network reconstruction, but also takes more time to compute. On a laptop 10 perturbations of a 40-gene network take ~5 minutes.
