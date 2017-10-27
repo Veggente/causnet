@@ -56,12 +56,13 @@ def main(argv):
     tds = False
     graphml_file = 'grn.xml'
     # Virtual time shift.
-    vts = False
+    vts = 0
     f_test = False
+    parser_file = ''
     # TODO: Use argparse instead of getopt.
     try:
         opts, args = getopt.getopt(
-            argv, 'p:c:i:sl:m:f:r:u:o:e:a:t:ndT:M:E:g:vFx:'
+            argv, 'p:c:i:sl:m:f:r:u:o:e:a:t:ndT:M:E:g:v:Fx:P:'
             )
     except getopt.GetoptError as e:
         print(str(e))
@@ -73,7 +74,8 @@ def main(argv):
             [-o] <position_out_file> [-e] <json_out_file>
             [-a] <json_in_file> [-t] <edge_threshold> [-d] [-T]
             <num_times> [-M] <num_experiments> [-E] <num_extra_genes>
-            [-g] <GraphML_file> [-v] [-F] [-x] <expression_file>
+            [-g] <GraphML_file> [-v] <num_virtual_times> [-F] [-x]
+            <expression_file> [-P] <parser_file>
 
             -r      Pseudorandom number generator seed.
             -c      Condition list file.
@@ -88,11 +90,20 @@ def main(argv):
             -f      The significance level for edge rejection based on
                     Granger causality. The default is 0.05.
             -u      Input file to specify gene clusters.
-            -v      Virtual time shift: replicate the first time and append
-                    it to the end in order to close the loop from the last
-                    time to the first time the next day.
+            -v      Virtual time shift: replicate the first times and
+                    append them to the end in order to close the loop
+                    from the last time to the first times the next
+                    day. Default is one virtual time.
             -F      F-test for one-way ANOVA.
             -x      Normalized gene expression file in CSV format.
+            -P      Sample ID parser file.
+                    Parse the sample IDs to get the conditions.
+                    The last condition must be the sample time.
+                    The other are the unstructured conditions to
+                    create experimental perturbation, which can
+                    also be selected as subset of data. At least
+                    two replicates are needed for each sample
+                    condition for the perturbation analysis.
             """
             )
         sys.exit(2)
@@ -137,8 +148,6 @@ def main(argv):
             json_out_file = ''
         elif opt == '-t':
             edge_threshold = float(arg)
-        #elif opt == '-n':
-        #    is_plotting = False
         elif opt == '-d':
             tds = True
         elif opt == '-T':
@@ -160,27 +169,31 @@ def main(argv):
         elif opt == '-g':
             graphml_file = arg
         elif opt == '-v':
-            vts = True
+            # The default number of virtual time shifts is 1.
+            # Otherwise specify using an argument.
+            if arg:
+                vts = int(arg)
+            else:
+                vts = 1
         elif opt == '-F':
             f_test = True
         elif opt == '-x':
             expression_file = arg
+        elif opt == '-P':
+            parser_file = arg
         # No other cases.
     if not gene_list_file:
         print('Please specify a gene list file using [-i].')
         exit(1)
     gene_list = read_gene(gene_list_file)
     if not json_in_file:
-        #data_cell, data_var = extract_data(
-        #    gene_list, expression_file, photoperiod_set, strain_set,
-        #    time_point_set, clustering_indicator, f_test, num_replicates
-        #    )
+        parser_dict = load_parser(parser_file)
         data_cell, data_var = extract_data_new(
-            gene_list, expression_file, cond_list
+            gene_list, expression_file, cond_list, parser_dict
             )
         if vts:
-            data_cell = virtual_time_shift(data_cell)
-            data_var = virtual_time_shift(data_var)
+            data_cell = virtual_time_shift(data_cell, vts)
+            data_var = virtual_time_shift(data_var, vts)
     if clustering_indicator:
         # Read from clustering_file.
         with open(clustering_file, 'r') as f:
@@ -757,14 +770,20 @@ def read_gene(gene_list_file):
     gene_list = GeneList()
     with open(gene_list_file, 'r') as f:
         for line in f:
-            data = line.split(',')
+            # Remove trailing newline or white spaces and split by comma.
+            data = line.rstrip().split(',')
             # OBSOLETE: Gene positions are no longer needed since we use
             # Cytoscape for network visualization.
             if len(data) == 4:
                 gene = Gene(data[0], data[1], float(data[2]),
                             float(data[3]))
             else:
-                gene = Gene(data[0], data[1], 0, 0)
+                # Use the gene name if it is provided. Otherwise use the
+                # gene ID as the gene name.
+                if data[1]:
+                    gene = Gene(data[0], data[1], 0, 0)
+                else:
+                    gene = Gene(data[0], data[0], 0, 0)
                 gene_list.has_pos = False
             gene_list.genes.append(gene)
     return gene_list
@@ -995,14 +1014,18 @@ def add_source(gene_network):
     nx.set_node_attributes(gene_network, 'source', source)
 
 
-def virtual_time_shift(data):
+def virtual_time_shift(data, extra=1):
     """Virtual time shift.
 
-    data -- a list of matrices.
-    Returns a list of matrices, each of which is appended with a row that
-        is identical to the first row.
+    Args:
+        data: A list of matrices.
+        extra: The number of virtual times. Default is 1.
+
+    Returns:
+        A list of matrices, each of which is appended with a number
+        of rows that is identical to the first rows.
     """
-    return [np.concatenate((x, [x[0]]), axis=0) for x in data]
+    return [np.concatenate((x, x[:extra, :]), axis=0) for x in data]
 
 
 def anova_old(expression, gene_id, photoperiod_set, strain_set,
@@ -1052,7 +1075,7 @@ def convert_csv(csv_white, csv_comma=''):
 
 
 def extract_data_new(
-    gene_list, expression_file, cond_list
+    gene_list, expression_file, cond_list, parser_dict
     ):
     """Extract expression data from file.
     
@@ -1068,6 +1091,8 @@ def extract_data_new(
                 [1, 2, 3, 4],
                 ['I1', 'D0', 'I3', 'I4', 'I5', 'I6']
                 ]
+        parser_dict: A dictionary with sample IDs as key and tuples
+            of conditions as values.
 
     Returns:
         A 2-tuple of lists of 2-d numpy arrays.
@@ -1095,24 +1120,13 @@ def extract_data_new(
         # Remove trailing newline and leading empty
         # element.
         sample_ids_str = f.readline().strip().split(',')[1:]
-        # Parse the sample IDs to get the conditions.
-        # The last condition must be the sample time.
-        # The other are the unstructured conditions to
-        # create experimental perturbation, which can
-        # also be selected as subset of data. At least
-        # two replicates are needed for each sample
-        # condition for the bootstrapping
-        # perturbation/stability analysis.
-        sample_ids = [
-            anova.sample_id_parser_compact(sid_str)
-            for sid_str in sample_ids_str
-            ]
         for line in f:
             exp = line.strip().split(',')
             gene_id = exp[0]
             exp_str_list = exp[1:]
             if gene_id in gene_ids_remaining:
-                for idx_sid, sid in enumerate(sample_ids):
+                for idx_sid, sid_str in enumerate(sample_ids_str):
+                    sid = parser_dict[sid_str]
                     # Check if current sample is in
                     # the condition list.
                     is_in_cond_list = True
@@ -1151,6 +1165,7 @@ def extract_data_new(
     time_point_set = cond_list[-1]
     num_time_points = len(time_point_set)
     num_genes = len(gene_list.genes)
+    # Use single star to unpack the list into positional arguments.
     for idx_oc, other_cond in enumerate(
             itertools.product(*cond_list[:-1])
             ):
@@ -1175,6 +1190,136 @@ def extract_data_new(
                     sample_mean_var(replicates)
                     )
     return data_mean, data_var
+
+
+def rename_genes(old_graphml_file, gene_list_file, new_graphml_file):
+    """Rename genes from a GraphML file and save to another file.
+
+    Args:
+        old_graphml_file: A graph in GraphML format where each node has
+            a string of gene ID as the value and a string as an attribute
+            called "name".
+
+            For example:
+            $ G.node
+            {'Glyma.01G000100': {'name: 'My first gene'},
+             'Glyma.01G000200': {'name': 'My second gene'}}
+
+        gene_list_file: A CSV format file consisting a column of gene
+            IDs and a corresponding column of gene names.
+
+            For example:
+            Glyma.01G000100,Gene 1
+            Glyma.01G000200,Gene 2
+
+        new_graphml_file: Path to the GraphML file with new gene names.
+
+            For example:
+            $ G.node
+            {'Glyma.01G000100': {'name: 'Gene 1'},
+             'Glyma.01G000200': {'name': 'Gene 2'}}
+
+    Returns:
+        None
+    """
+    gene_network = nx.read_graphml(old_graphml_file)
+    gene_list = read_gene(gene_list_file)
+    for gene in gene_list.genes:
+        if gene.id in gene_network.nodes():
+            gene_network.node[gene.id]['name'] = gene.name
+        else:
+            print('Gene {} is not found in {}.'.format(
+                gene.id, old_graphml_file
+                ))
+    nx.write_graphml(gene_network, new_graphml_file)
+    return
+
+
+def find_cond_by_cond(conditions, cond_target, cond_given):
+    """Find the set of target conditions given other conditions.
+
+    Args:
+        conditions: A list of tuples of sample conditions.
+            E.g.,
+            [(16, 'LD', 1, 'I1'), (16, 'SD', 2, 'I2'),
+             (16, 'SD', 1, 'I1'), (16, 'Sh', 2, 'I1')]
+        cond_target: A list of integers indicating the 0-based
+            indices of the target conditions.
+            E.g., [1].
+        cond_given: A list of integers indicating the 0-based
+            indices of the given conditions.
+            E.g., [2, 3].
+
+    Returns:
+        A dictionary with tuples of given conditions as the keys
+        and list of tuples of the target conditions as the values.
+    """
+    cond_dict = {}
+    for cond in conditions:
+        target = tuple(cond[i] for i in cond_target)
+        given = tuple(cond[i] for i in cond_given)
+        if given not in cond_dict:
+            cond_dict[given] = [target]
+        else:
+            if target not in cond_dict[given]:
+                cond_dict[given].append(target)
+    return cond_dict
+
+
+def filter_cond(expression_file, cond_target_idx, cond_given_idx,
+                cond_given=()):
+    """Filter the sample conditions based on factors.
+
+    TODO: Replace anova.sample_id_parser_deluxe with the parser
+        dictionary.
+
+    Args:
+        expression_file: A path to the expression level file.
+        cond_target_idx: A list of integers indicating the 0-based
+            indices of the target factors.
+        cond_given_idx: A list of integers indicating the 0-based
+            indices of the given factors.
+        cond_given: A tuple of the particular levels of the given
+            factors. Default is an empty tuple.
+
+    Returns:
+        A list of the levels of the target factors if the particular
+        levels of the given factors are specified; a dictionary
+        mapping the given factor level tuples to the target factor
+        levels otherwise.
+    """
+    with open(expression_file, 'r') as f:
+        sample_ids_str = f.readline().strip().split(',')[1:]
+        sample_ids = [
+            anova.sample_id_parser_compact(sid_str)
+            for sid_str in sample_ids_str
+        ]
+    cond_dict = find_cond_by_cond(sample_ids, cond_target_idx,
+                                  cond_given_idx)
+    if cond_given:
+        return cond_dict[cond_given]
+    else:
+        return cond_dict
+
+
+def load_parser(parser_table_file):
+    """Load parser table in a dictionary.
+
+    Args:
+        parser_table_file: A CSV format file.
+            The first element in each row is the sample ID. The rest
+            are the conditions. The last condition is the sample time.
+
+    Returns:
+        A dictionary with sample IDs as the key and the tuple of
+        conditions as the value.
+    """
+    parser_dict = {}
+    with open(parser_table_file, 'r') as f:
+        for line in f:
+            words = line.strip().split(',')
+            parser_dict[words[0]] = tuple(words[1:])
+    return parser_dict
 
 
 if __name__ == "__main__":
