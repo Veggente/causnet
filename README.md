@@ -57,7 +57,7 @@ CausNet recovers the gene regulatory network from time-series gene expression da
     Create a text file in JSON format of several lists, where each list specifies the levels to include in an experimental condition.  The last list must be ordered sample times.  See an example in `cond-list-file.txt`.
 
 1. Run the gene regulatory network inference algorithm.
-    ```
+    ```sh
     (myvenv) > python soybean.py -x expressions.csv -P design.csv -i gene-list.csv -c cond-list-file.txt -g grn.xml -p 10
     ```
     Let's break it down:
