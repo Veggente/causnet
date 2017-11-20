@@ -16,14 +16,14 @@ import ast
 import math
 import scipy.stats
 import itertools
-import anova
 
 
 def main(argv):
+    # TODO: Remove default expression file.
     expression_file = 'expression-2011.csv'
     # Indicator for perturbation analysis.
     is_perturb = False
-    # TODO: Universal factor selection.
+    # TODO: Remove default factor selection.
     photoperiod_set = ['LD', 'SD', 'Sh']
     strain_set = ['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7']
     time_point_set = ['T1', 'T3', 'T5']
@@ -39,33 +39,42 @@ def main(argv):
     max_in_degree = 3
     significance_level = 0.05
     gene_list_file = ''
+    # TODO: Remove obsolete NetworkX graphing and its options.
     font_size = 14
     width_max = 2
     node_size = 500
     node_color = 'w'
     node_shape = 's'
     border_width = 0
-    clustering_indicator = False
-    num_replicates = 3
-    pos_file = ''
-    json_out_file = ''
-    json_in_file = ''
     edge_threshold = 0.0
     is_plotting = False
-    # Time-dependent standardization.
+    # TODO: Test compatibility of gene clustering.
+    clustering_indicator = False
+    # TODO: Remove default number of replicates; extract from data.
+    num_replicates = 3
+    # TODO: Remove obsolete position file.
+    pos_file = ''
+    # TODO: Remove obsolete JSON input and output files.
+    json_out_file = ''
+    json_in_file = ''
+    # TODO: Test validity of time-dependent standardization.
     tds = False
     graphml_file = 'grn.xml'
     # Virtual time shift.
     vts = 0
     f_test = False
+    # Experiment design file (a.k.a. sample ID parser file).
     parser_file = ''
     # TODO: Use argparse instead of getopt.
+    # TODO: Remove obsolete options and document new options.
     try:
         opts, args = getopt.getopt(
             argv, 'p:c:i:sl:m:f:r:u:o:e:a:t:ndT:M:E:g:v:Fx:P:'
             )
     except getopt.GetoptError as e:
         print(str(e))
+        # TODO: Move Arabidopsis flowering data generation to
+        # bio-data-gen.py.
         print(
             """Usage: ./soybean.py [-r] <random_seed> [-c] <cond_list_file>
             [-p] <num_perturb> [-l] <num_time_lags> [-m]
@@ -117,6 +126,13 @@ def main(argv):
         elif opt == '-c':
             with open(arg, 'r') as f:
                 cond_list = json.load(f)
+                # Convert numericals to strings.
+                cond_list_temp = []
+                for sub_list in cond_list:
+                    cond_list_temp.append([
+                        str(element) for element in sub_list
+                        ])
+                cond_list = cond_list_temp
         #elif opt == '-s':
         #    self_reg = True
         elif opt == '-l':
@@ -182,6 +198,7 @@ def main(argv):
         elif opt == '-P':
             parser_file = arg
         # No other cases.
+    # TODO: Add more input checking.
     if not gene_list_file:
         print('Please specify a gene list file using [-i].')
         exit(1)
@@ -350,7 +367,7 @@ def main(argv):
                         p_values_agg[gene, parent]
                         ), 0.05)
             sign_dict = {(gene_list.genes[u].id, gene_list.genes[v].id):
-                         sign_count[u, v] / sign_cnt_total[u, v]
+                         float(np.sign(sign_count[u, v]))
                          for u, v in sign_count}
         # Export JSON format file.
         if json_out_file:
@@ -953,7 +970,18 @@ def load_dict(json_in_file):
 
 
 def thickness(p_value, significance_level):
-    """Exponential decreasing thickness."""
+    """Exponentially decreasing thickness.
+
+    This is a different function to convert p-values to edge
+    reliability scores.  The default is the threshold function.
+
+    Args:
+        p_value: The p-value of the used test statistic on the edge.
+        significance_level: The significance level for the test.
+
+    Returns:
+        An exponentially decreasing reliability score.
+    """
     return math.exp(-math.log(2) / significance_level * p_value)
 
 
@@ -1266,44 +1294,8 @@ def find_cond_by_cond(conditions, cond_target, cond_given):
     return cond_dict
 
 
-def filter_cond(expression_file, cond_target_idx, cond_given_idx,
-                cond_given=()):
-    """Filter the sample conditions based on factors.
-
-    TODO: Replace anova.sample_id_parser_deluxe with the parser
-        dictionary.
-
-    Args:
-        expression_file: A path to the expression level file.
-        cond_target_idx: A list of integers indicating the 0-based
-            indices of the target factors.
-        cond_given_idx: A list of integers indicating the 0-based
-            indices of the given factors.
-        cond_given: A tuple of the particular levels of the given
-            factors. Default is an empty tuple.
-
-    Returns:
-        A list of the levels of the target factors if the particular
-        levels of the given factors are specified; a dictionary
-        mapping the given factor level tuples to the target factor
-        levels otherwise.
-    """
-    with open(expression_file, 'r') as f:
-        sample_ids_str = f.readline().strip().split(',')[1:]
-        sample_ids = [
-            anova.sample_id_parser_compact(sid_str)
-            for sid_str in sample_ids_str
-        ]
-    cond_dict = find_cond_by_cond(sample_ids, cond_target_idx,
-                                  cond_given_idx)
-    if cond_given:
-        return cond_dict[cond_given]
-    else:
-        return cond_dict
-
-
 def load_parser(parser_table_file):
-    """Load parser table in a dictionary.
+    """Load parser table into a dictionary.
 
     Args:
         parser_table_file: A CSV format file.
