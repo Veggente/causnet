@@ -268,7 +268,6 @@ def gen_planted_edge_data(
     """Generate data from the planted-edge model.
 
     TODO: Add multifactorial perturbation with and without time series.
-    TODO: Add extra genes.
 
     Linear dependence is given by the adjacency matrix.  With
     Gaussian noise added, the sum is mapped back to Unif[0, 1]
@@ -294,7 +293,20 @@ def gen_planted_edge_data(
     """
     # Load adjacency matrix.
     adj_mat = np.loadtxt(adj_mat_file, delimiter=' ')
-    # TODO: Check size of adjacency matrix.
+    # Check size of adjacency matrix.
+    # TODO: Check the adjacency matrix is square.
+    num_genes_in_adj_mat = adj_mat.shape[0]
+    if num_genes < num_genes_in_adj_mat:
+        print('The specified number of genes is smaller than the'
+              'size of the adjacency matrix.')
+        return 1
+    if num_genes > num_genes_in_adj_mat:
+        adj_mat_big = np.zeros((num_genes, num_genes))
+        adj_mat_big[
+            :num_genes_in_adj_mat, :num_genes_in_adj_mat
+            ] = adj_mat
+        adj_mat = adj_mat_big
+    print(adj_mat)
     np.random.seed(rand_seed)
     expressions = []
     for i in range(num_experiments):
@@ -350,7 +362,7 @@ def gen_planted_edge_data(
                         +str(j)+'\n'
                         )
                     idx_sample += 1
-    return
+    return 0
 
 
 if __name__ == "__main__":
