@@ -9,7 +9,7 @@ import pandas as pd
 
 
 def main(argv):
-    num_genes = 5
+    num_genes = 20
     adj_mat_file = 'adj_mat.csv'
     sigma = 0.1
     num_experiments = 10
@@ -306,7 +306,6 @@ def gen_planted_edge_data(
             :num_genes_in_adj_mat, :num_genes_in_adj_mat
             ] = adj_mat
         adj_mat = adj_mat_big
-    print(adj_mat)
     np.random.seed(rand_seed)
     expressions = []
     for i in range(num_experiments):
