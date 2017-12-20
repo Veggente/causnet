@@ -67,9 +67,13 @@ def main(argv):
     parser_file = ''
     # TODO: Use argparse instead of getopt.
     # TODO: Remove obsolete options and document new options.
+    # Network inference algorithm.
+    algorithm = 'causnet'
+    # Number of permutations in the permutation test for oCSE.
+    num_perm = 100
     try:
         opts, args = getopt.getopt(
-            argv, 'p:c:i:sl:m:f:r:u:o:e:a:t:ndT:M:E:g:v:Fx:P:'
+            argv, 'p:c:i:sl:m:f:r:u:o:e:a:t:ndT:M:E:g:v:Fx:P:A:R:'
             )
     except getopt.GetoptError as e:
         print(str(e))
@@ -84,7 +88,8 @@ def main(argv):
             [-a] <json_in_file> [-t] <edge_threshold> [-d] [-T]
             <num_times> [-M] <num_experiments> [-E] <num_extra_genes>
             [-g] <GraphML_file> [-v] <num_virtual_times> [-F] [-x]
-            <expression_file> [-P] <parser_file>
+            <expression_file> [-P] <parser_file> [-A] <algorithm>
+            [-R] <num_perm>
 
             -r      Pseudorandom number generator seed.
             -c      Condition list file.
@@ -113,6 +118,11 @@ def main(argv):
                     also be selected as subset of data. At least
                     two replicates are needed for each sample
                     condition for the perturbation analysis.
+            -A      Select network inference algorithm.
+                    Can be 'causnet' or 'ocse'.  Default is
+                    'causnet'.
+            -R      Number of permutations in the permutation test.
+                    Only required for 'ocse' algorithm.
             """
             )
         sys.exit(2)
@@ -197,6 +207,17 @@ def main(argv):
             expression_file = arg
         elif opt == '-P':
             parser_file = arg
+        elif opt == '-A':
+            algorithm = arg
+            alg_set = ['causnet', 'ocse']
+            if not algorithm in alg_set:
+                print('Inference algorithm not recognized.  '
+                      'Please choose one of the following.')
+                for alg in alg_set:
+                    print(alg)
+                sys.exit(1)
+        elif opt == '-R':
+            num_perm = int(arg)
         # No other cases.
     # TODO: Add more input checking.
     if not gene_list_file:
@@ -283,10 +304,18 @@ def main(argv):
         # TODO: Can this be combined with the previous "not json_in_file"
         # case?
         if not is_perturb:
-            caspian_out = ca.caspian(
-                data_cell, num_time_lags, max_in_degree,
-                significance_level, self_reg, tds
-                )
+            if algorithm == 'causnet':
+                caspian_out = ca.caspian(
+                    data_cell, num_time_lags, max_in_degree,
+                    significance_level, self_reg, tds
+                    )
+            elif algorithm == 'ocse':
+                caspian_out = ca.ocse(
+                    data_cell, num_perm, significance_level,
+                    max_in_degree
+                    )
+            # TODO: Make returning p-values is compatible with the
+            # ocse algorithm.
             if significance_level:
                 parents, signs = caspian_out
             else:
@@ -320,10 +349,18 @@ def main(argv):
                         data_page
                         + np.sqrt(data_var[idx_page])*random_matrix
                         )
-                caspian_out = ca.caspian(
-                    perturbed_data_cell, num_time_lags, max_in_degree,
-                    significance_level, self_reg, tds
-                    )
+                if algorithm == 'causnet':
+                    caspian_out = ca.caspian(
+                        perturbed_data_cell, num_time_lags, max_in_degree,
+                        significance_level, self_reg, tds
+                        )
+                elif algorithm == 'ocse':
+                    caspian_out = ca.ocse(
+                        perturbed_data_cell, num_perm,
+                        significance_level, max_in_degree
+                        )
+                # TODO: Make returning p-values is compatible with the
+                # ocse algorithm.
                 if significance_level:
                     parents, signs = caspian_out
                 else:

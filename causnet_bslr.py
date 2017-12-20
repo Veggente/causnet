@@ -297,5 +297,168 @@ def standardize(data_cell):
     return data_cell_st
 
 
+def ocse(data_cell, num_perm, alpha=0.05, sparsity=0):
+    """Optimal causation entropy algorithm by Sun-Taylor-Bollt 2015.
+
+    Note:
+        Only works for single time lag.
+        Only includes the discovery stage.
+        The biased permutation test does not address the model
+            selection uncertainty.
+
+    Args:
+        data_cell: A list of gene expression matrices.  The ith
+            matrix is T_i-by-n where T_i is the number of sample
+            times in experiment i, and n is the number of genes.
+            Note that the permutation test in the algorithm will
+            be purely temporal if the list contains only one
+            element (single experiment).
+        num_perm: The number of permutations per gene for the test.
+        alpha: The significance level for the (biased) permutation
+            test.
+        sparsity: Maximum number of parents for each target vector.
+            The default 0 indicates no sparsity limit (i.e.,
+            sparsity is equal to the number of vectors).
+
+    Returns:
+        A 2-tuple sparse representation of the reconstructed network.
+        The first element of the tuple is a list of lists of parent
+        indices and the second element of the tuple is a list of
+        lists of signs.
+    """
+    # Create an m-by-n-by-2 array by shifting a size-2 window in each
+    # experiment to get multiple virtual experiments.  Here m is the
+    # total number of virtual experiments and n the number of genes.
+    # The first matrix [:, :, 0] is the predictor matrix and the
+    # second matrix [:, :, 1] is the target matrix.
+    shifted_data = get_shifted_matrix(data_cell, 1)
+    # Center the predictors to eliminate the residual of the intercept.
+    # TODO: Remove unnecessary standardization.
+    phi = normalize(shifted_data)
+    num_genes = data_cell[0].shape[1]
+    if sparsity > 0:
+        num_iterations = sparsity
+    else:
+        num_iterations = num_genes
+    # Initialize the list of parents and signs for all the target
+    #genes.
+    parent_list = []
+    sign_list = []
+    for i in range(num_genes):
+        # The orthonormal parent dictionary has parent indices as the
+        # keys and vector-sign 2-tuples as the values.
+        ortho_parent_dict = {}
+        target = phi[:, i, 1]
+        # Successively discover best predictors.  Note iteration
+        # can terminate when no candidate is found or when candidate
+        # does not pass the permutation test.  As a result, the final
+        # number of parents may be smaller than num_iterations.
+        for l in range(num_iterations):
+            # Initialization of best candidate index.
+            best_candidate_idx = -1
+            # Initialization of best normalized innovation.
+            best_cand_innov = np.zeros(target.shape)
+            # Initialization of best candidate sign.
+            best_sign = 0
+            # Initialization of maximum absolute value of correlation
+            # along the innovation direction.
+            max_corr_abs = 0
+            # For innovation calculation.
+            ortho_vec_list = [
+                ortho_parent_dict[key][0] for key in
+                ortho_parent_dict
+                ]
+            # Find best candidate predictor.
+            for j in range(num_genes):
+                # Skip predictors that have already been selected.
+                if j in ortho_parent_dict:
+                    continue
+                # Candidate predictor vector.
+                candidate = phi[:, j, 0]
+                # Normalized innovation of the candidate based on the
+                # selected orthonormal predictors.
+                cand_innov = get_norm_innov(
+                    candidate, ortho_vec_list
+                    )
+                corr = np.inner(cand_innov, target)
+                sign = np.sign(corr)
+                corr_abs = np.absolute(corr)
+                if corr_abs > max_corr_abs:
+                    max_corr_abs = corr_abs
+                    best_candidate_idx = j
+                    best_cand_innov = cand_innov
+                    best_sign = sign
+            # Initialize the significance indicator.
+            is_significant = False
+            # Do permutation test if a vector is found.
+            if best_candidate_idx >= 0:
+                # Biased permutation test.
+                counter = 0
+                for k in range(num_perm):
+                    perm_cand = np.random.permutation(
+                        phi[:, best_candidate_idx, 0]
+                        )
+                    perm_cand_innov = get_norm_innov(
+                        perm_cand, ortho_vec_list
+                        )
+                    perm_corr_abs = np.absolute(
+                        np.inner(perm_cand_innov, target)
+                        )
+                    if perm_corr_abs > max_corr_abs:
+                        counter += 1
+                        # Terminate as soon as the count for permuted
+                        # vectors that are more significant than our
+                        # best vector is larger than the threshold.
+                        # This only saves some computation.
+                        if counter >= num_perm*alpha:
+                            break
+                if counter < num_perm*alpha:
+                    is_significant = True
+            # Candidate passed the permutation test.
+            if is_significant:
+                ortho_parent_dict[best_candidate_idx] = (
+                    best_cand_innov, best_sign
+                    )
+            # No candidate found, or candidate did not pass the test.
+            else:
+                break
+        parent_set = []
+        sign_set = []
+        for parent in ortho_parent_dict:
+            parent_set.append(parent)
+            sign_set.append(ortho_parent_dict[parent][1])
+        parent_list.append(parent_set)
+        sign_list.append(sign_set)
+    return parent_list, sign_list
+
+
+def get_norm_innov(x, ortho_vec, eps=1e-10):
+    """Get normalized innovation with respect to a list of
+    orthonormal vectors.
+
+    This is a single step in the Gram-Schmidt process.
+
+    Args:
+        x: An array representing the target vector.
+        ortho_vec: A list of arrays representing the orthonormal
+            vectors.
+        eps: Epsilon for comparison between norm and zero.  Default
+            value is 1e-10.
+
+    Returns:
+        The normalized vector of the residual of x from the span of
+        ortho_vec if x is not in the span of ortho_vec, or the zero
+        vector otherwise.
+    """
+    residual = x
+    for vec in ortho_vec:
+        residual = residual - np.inner(x, vec)*vec
+    if np.linalg.norm(residual) > eps:
+        norm_res = residual / np.linalg.norm(residual)
+    else:
+        norm_res = np.zeros(x.shape)
+    return norm_res
+
+
 if __name__ == "__main__":
     testing()
