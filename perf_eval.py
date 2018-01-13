@@ -2,6 +2,7 @@
 """Performance evaluation of ternary classification.
 
 Functions:
+    main: Plot curves and metrics.
     get_sas: Get the sensitivity, accuracy and specificity for a
         ternary classification result as 2-d arrays.
     get_sas_list: Get SAS lists from a weighted network.
@@ -17,6 +18,31 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.style.use('ggplot')
+
+
+def main(argv):
+    """Plot AS and SS curves and metric bars for algorithms.
+
+    Args:
+        #0: GraphML file for CausNet.
+        #1: GraphML file for oCSE.
+        #2: CSV file for the ground truth.
+        #3: Output prefix.
+        #4: Name for algorithm 1.
+        #5: Name for algorithm 2.
+
+    Returns:
+        Saves the AS curve, the SS curve and the
+        metric bars.
+    """
+    graphml_file = {}
+    graphml_file[argv[4]] = argv[0]
+    graphml_file[argv[5]] = argv[1]
+    gt = argv[2]
+    thresholds = np.linspace(0, 1, 101)
+    plot_sas(graphml_file, gt, thresholds, output=argv[3])
+    return
+
 
 def get_sas(decision, prior, self_edge=False):
     """Get sensitivity, accuracy and specificity for a ternary
@@ -313,3 +339,7 @@ def integrate_lin(x, y):
     return np.inner(
         x_finite[1:]-x_finite[:-1], (y_finite[1:]+y_finite[:-1])/2
         )
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
