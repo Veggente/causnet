@@ -209,7 +209,7 @@ def main(argv):
             parser_file = arg
         elif opt == '-A':
             algorithm = arg
-            alg_set = ['causnet', 'ocse']
+            alg_set = ['causnet', 'ocse', 'sbl']
             if not algorithm in alg_set:
                 print('Inference algorithm not recognized.  '
                       'Please choose one of the following.')
@@ -358,6 +358,10 @@ def main(argv):
                     caspian_out = ca.ocse(
                         perturbed_data_cell, num_perm,
                         significance_level, max_in_degree
+                        )
+                elif algorithm == 'sbl':
+                    caspian_out = ca.sbl_grn(
+                        perturbed_data_cell, sparsity_threshold=3.0
                         )
                 # TODO: Make returning p-values is compatible with the
                 # ocse algorithm.

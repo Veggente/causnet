@@ -74,7 +74,7 @@ def get_shifted_matrix(data_cell, num_time_lags, is_single_mat=False):
     if is_single_mat:
         num_time_points, num_genes = data_cell.shape
         sliding_window_height = num_time_points - num_time_lags
-        # Generate the uninitiated shifted matrix.
+        # Generate the uninitialized shifted matrix.
         shifted_matrix = np.empty([
             sliding_window_height, num_genes, num_time_lags + 1
             ])
@@ -458,6 +458,92 @@ def get_norm_innov(x, ortho_vec, eps=1e-10):
     else:
         norm_res = np.zeros(x.shape)
     return norm_res
+
+
+def sbl(y, phi, sigma_sq, epsilon=1e-4, max_iter=1000):
+    """The SBL algorithm in Murthy's slides.
+
+    Args:
+        y: The observed signal as an array of length m.
+        phi: The sensing matrix as an m-by-N array.
+        sigma_sq: The variance of the additive Gaussian noise.
+        epsilon: The tolerance for convergence of mu in terms of the 2-norm of the difference.
+        max_iter: The maximum number of iterations.
+
+    Returns:
+        A 3-tuple of the array of hyperparameters (gammas), the array of the signal (x's), and the total number of steps used.
+    """
+    y.shape = (len(y), 1)
+    gamma = np.identity(phi.shape[1])
+    sigma_0 = phi.T.dot(phi)/sigma_sq
+    mu = None
+    for i in range(max_iter):
+        mu_old = mu
+        sigma_mat = np.linalg.inv(sigma_0+np.linalg.inv(gamma))
+        mu = 1/sigma_sq*sigma_mat.dot(phi.T).dot(y)
+        gamma = np.diag(np.diag(mu.dot(mu.T)+sigma_mat))
+        if mu_old is not None and np.linalg.norm(mu-mu_old) < epsilon:
+            break
+    return np.diag(gamma), mu.reshape(len(mu)), i+1
+
+
+def sbl_grn(data_cell, sigma_sq_0=0.01, sigma_eps=0.4, sigma_max_iter=10, sparsity_threshold=1, **sbl_kargs):
+    """Sparse Bayesian learning algorithm for gene regulatory network reconstruction.
+
+    Args:
+        data_cell: A list of gene expression matrices.  The ith
+            matrix is T_i-by-n where T_i is the number of sample
+            times in experiment i, and n is the number of genes.
+        sigma_sq_0: The initial estimated noise variance.
+        sigma_eps: The log relative tolerance for convergence of the iteratively estimated noise variance in absolute value.
+        sigma_max_iter: The maximum number of iterations for the iteratively estimated noise variance.
+        sparsity_threshold: The ratio of the signal sparsity threshold to the mean signal magnitude.
+        sbl_kargs: Keyword arguments for convergence of SBL.
+
+    Returns:
+        A 2-tuple sparse representation of the reconstructed network.
+        The first element of the tuple is a list of lists of parent
+        indices and the second element of the tuple is a list of
+        lists of signs.
+    """
+    # Create an m-by-n-by-2 array by shifting a size-2 window in each
+    # experiment to get multiple virtual experiments.  Here m is the
+    # total number of virtual experiments and n the number of genes.
+    # The first matrix [:, :, 0] is the predictor matrix and the
+    # second matrix [:, :, 1] is the target matrix.
+    shifted_data = get_shifted_matrix(data_cell, 1)
+    # Standardize the data.
+    standardized_data = normalize(shifted_data)
+    num_genes = data_cell[0].shape[1]
+    parent_list = []
+    sign_list = []
+    for i in range(num_genes):
+        y = standardized_data[:, i, 1]
+        phi = standardized_data[:, :, 0]
+        sigma_sq_new = sigma_sq_0
+        for j in range(sigma_max_iter):
+            sigma_sq_old = sigma_sq_new
+            print('Using estimated noise variance', sigma_sq_old)
+            _, x, _ = sbl(y, phi, sigma_sq_old, **sbl_kargs)
+            res = y-phi.dot(x[:, None])
+            sigma_sq_new = np.mean(res*res)
+            print('New estimated noise variance', sigma_sq_new)
+            if np.absolute(np.log(sigma_sq_new/sigma_sq_old)) < sigma_eps:
+                print('Estimated noise variance reached convergence')
+                break
+        x_abs = np.absolute(x)
+        x_threshold = np.mean(x_abs)*sparsity_threshold
+        x_s = x
+        x_s[x_abs < x_threshold] = 0
+        parent_set = []
+        sign_set = []
+        for gene, reg in enumerate(x_s):
+            if reg:
+                parent_set.append(gene)
+                sign_set.append(np.sign(reg))
+        parent_list.append(parent_set)
+        sign_list.append(sign_set)
+    return parent_list, sign_list
 
 
 if __name__ == "__main__":
