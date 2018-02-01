@@ -24,23 +24,23 @@ def main(argv):
     """Plot AS and SS curves and metric bars for algorithms.
 
     Args:
-        #0: GraphML file for CausNet.
-        #1: GraphML file for oCSE.
-        #2: CSV file for the ground truth.
-        #3: Output prefix.
-        #4: Name for algorithm 1.
-        #5: Name for algorithm 2.
+        #0: GraphML files separated by commas.
+        #1: CSV file for the ground truth.
+        #2: Output prefix.
+        #3: Names for the algorithms separated by commas.
 
     Returns:
         Saves the AS curve, the SS curve and the
         metric bars.
     """
     graphml_file = {}
-    graphml_file[argv[4]] = argv[0]
-    graphml_file[argv[5]] = argv[1]
-    gt = argv[2]
+    algs = argv[3].split(',')
+    files = argv[0].split(',')
+    for alg, g_file in zip(algs, files):
+        graphml_file[alg] = g_file
+    gt = argv[1]
     thresholds = np.linspace(0, 1, 101)
-    plot_sas(graphml_file, gt, thresholds, output=argv[3])
+    plot_sas(graphml_file, gt, thresholds, output=argv[2])
     return
 
 
