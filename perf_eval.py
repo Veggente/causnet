@@ -23,19 +23,21 @@ matplotlib.style.use('ggplot')
 def main(argv):
     """Plot AS and SS curves and metric bars for algorithms.
 
+    TODO: Use argparse.
+
     Args:
-        #0: GraphML files separated by commas.
+        #0: GraphML files separated by spaces.
         #1: CSV file for the ground truth.
         #2: Output prefix.
-        #3: Names for the algorithms separated by commas.
+        #3: Names for the algorithms separated by spaces.
 
     Returns:
         Saves the AS curve, the SS curve and the
         metric bars.
     """
     graphml_file = {}
-    algs = argv[3].split(',')
-    files = argv[0].split(',')
+    algs = argv[3].split(' ')
+    files = argv[0].split(' ')
     for alg, g_file in zip(algs, files):
         graphml_file[alg] = g_file
     gt = argv[1]
