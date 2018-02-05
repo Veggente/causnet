@@ -6,22 +6,55 @@ import numpy as np
 from scipy.integrate import odeint
 from scipy.stats import norm
 import pandas as pd
+import argparse
 
 
 def main(argv):
-    num_genes = 20
-    adj_mat_file = 'adj_mat.csv'
-    sigma = 0.1
     num_experiments = 10
-    csv_exp_file = 'exp.csv'
     csv_design_file = 'design.csv'
     num_replicates = 3
     num_times = 6
+    max_in_deg = 3
     rand_seed = None
-    gen_planted_edge_data(
-        num_genes, adj_mat_file, sigma, num_experiments, csv_exp_file,
-        csv_design_file, num_replicates, num_times, rand_seed
+    parser = argparse.ArgumentParser()
+    parser.add_argument("adjmat", help="adjacency matrix")
+    parser.add_argument("exp", help="expression level file")
+    parser.add_argument("-c", "--create",
+                        help="create new adjacency matrix",
+                        action="store_true")
+    parser.add_argument("-d", "--design",
+                        help="path to save design file to",
+                        default="")
+    parser.add_argument(
+        "--num-core-genes",
+        help="number of core genes (only with -c)", type=int,
+        default=5
         )
+    parser.add_argument(
+        "--num-genes",
+        help="total number of genes (only with -c)",
+        type=int, default=20
+        )
+    parser.add_argument("-s", "--snr",
+                        help="signal to noise ratio",
+                        type=float, default=1)
+    args = parser.parse_args()
+    # The regulation coefficients have variance one regardless
+    # of the margin.  So the SNR is
+    # (max_in_degree/2)*(1/12)/sigma**2.
+    sigma = np.sqrt(max_in_deg/24/args.snr)
+    adj_mat_file = args.adjmat
+    if args.create:
+        # Generate a random adjacency matrix file.
+        margin = 0.5
+        adj_mat = gen_adj_mat(args.num_core_genes, max_in_deg, margin)
+        np.savetxt(adj_mat_file, adj_mat)
+    gen_planted_edge_data(
+        args.num_genes, adj_mat_file, sigma, num_experiments,
+        args.exp, args.design, num_replicates, num_times,
+        rand_seed
+        )
+    return
 
 
 def main_old(argv):
@@ -276,7 +309,9 @@ def gen_planted_edge_data(
     Args:
         num_genes: Number of genes.  Should be at least as large
             as the adjacency matrix.
-        adj_mat_file: Adjacency matrix file.
+        adj_mat_file: Adjacency matrix file.  The (i, j)th
+            element is the regulation strength coefficient of
+            gene i over gene j.
         sigma: Noise level.
         num_experiments: Number of experiments.
         csv_exp_file: Path to output expression file.
@@ -288,8 +323,8 @@ def gen_planted_edge_data(
             https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.random.RandomState.html#numpy.random.RandomState).
 
     Returns:
-        Write an expression file (csv_exp_file) and a design file
-            (csv_design_file) in CSV format.
+        Write an expression file (csv_exp_file, if given) and a
+            design file (csv_design_file) in CSV format.
     """
     # Load adjacency matrix.
     adj_mat = np.loadtxt(adj_mat_file, delimiter=' ')
@@ -349,19 +384,57 @@ def gen_planted_edge_data(
                       index=genes)
     df.to_csv(csv_exp_file)
     # Output design file.
-    with open(csv_design_file, 'w') as f:
-        idx_sample = 0
-        for i in range(num_experiments):
-            for j in range(num_times):
-                for k in range(num_replicates):
-                    # Write the sample ID, condition, and the sample
-                    # time to each line.
-                    f.write(
-                        sample_ids[idx_sample]+','+str(i)+','
-                        +str(j)+'\n'
-                        )
-                    idx_sample += 1
+    if csv_design_file:
+        with open(csv_design_file, 'w') as f:
+            idx_sample = 0
+            for i in range(num_experiments):
+                for j in range(num_times):
+                    for k in range(num_replicates):
+                        # Write the sample ID, condition, and the
+                        # sample time to each line.
+                        f.write(
+                            sample_ids[idx_sample]+','+str(i)+','
+                            +str(j)+'\n'
+                            )
+                        idx_sample += 1
     return 0
+
+
+def gen_adj_mat(num_genes, max_in_deg, margin):
+    """Generate adjacency matrix.
+
+    Assume the in-degree is uniformly distributed over 0, 1, 2,
+    ..., max_in_deg.  Regulation strength coefficients are
+    Gaussian shifted away from the origin by the margin with
+    variance one.
+
+    Args:
+        num_genes: The number of genes.
+        max_in_deg: The maximum in-degree.
+        margin: The margin of regulation strength coefficients
+            from zero.
+            margin must be between 0 and 1.
+            The standard deviation of the Gaussian distribution
+            before the shift is then determined by the margin so
+            that the actual variance stays one.
+
+    Returns:
+        A 2-d array of the adjacency matrix of the generated
+        network.
+    """
+    adj_mat = np.zeros((num_genes, num_genes))
+    in_degrees = np.random.randint(max_in_deg+1, size=num_genes)
+    # Standard deviation of the unshifted Gaussians.
+    sd = np.sqrt(1-(1-2/np.pi)*margin**2)-np.sqrt(2/np.pi)*margin
+    for i in range(num_genes):
+        other_genes = [x for x in range(num_genes) if x != i]
+        regulators = np.random.choice(
+            other_genes, size=in_degrees[i], replace=False
+            )
+        st_gaussians = np.random.randn(in_degrees[i])
+        coeffs = sd*st_gaussians + margin*np.sign(st_gaussians)
+        adj_mat[regulators, i] = coeffs
+    return adj_mat
 
 
 if __name__ == "__main__":
