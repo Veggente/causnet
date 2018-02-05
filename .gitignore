@@ -9,3 +9,4 @@ qsub-output/
 *.xlsx
 *.csv
 *.xml
+*.pdf

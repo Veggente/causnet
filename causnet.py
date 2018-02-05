@@ -71,9 +71,11 @@ def main(argv):
     algorithm = 'causnet'
     # Number of permutations in the permutation test for oCSE.
     num_perm = 100
+    sparsity_threshold = 3.0
+    epsilon = 0.4
     try:
         opts, args = getopt.getopt(
-            argv, 'p:c:i:sl:m:f:r:u:o:e:a:t:ndT:M:E:g:v:Fx:P:A:R:'
+            argv, 'p:c:i:sl:m:f:r:u:o:e:a:t:ndT:M:E:g:v:Fx:P:A:R:S:I:'
             )
     except getopt.GetoptError as e:
         print(str(e))
@@ -89,7 +91,8 @@ def main(argv):
             <num_times> [-M] <num_experiments> [-E] <num_extra_genes>
             [-g] <GraphML_file> [-v] <num_virtual_times> [-F] [-x]
             <expression_file> [-P] <parser_file> [-A] <algorithm>
-            [-R] <num_perm>
+            [-R] <num_perm> [-S] <sparsity_threshold> [-I]
+            <espilon_sigma>
 
             -r      Pseudorandom number generator seed.
             -c      Condition list file.
@@ -119,10 +122,13 @@ def main(argv):
                     two replicates are needed for each sample
                     condition for the perturbation analysis.
             -A      Select network inference algorithm.
-                    Can be 'causnet' or 'ocse'.  Default is
+                    Can be 'causnet', 'ocse' or 'sbl'.  Default is
                     'causnet'.
             -R      Number of permutations in the permutation test.
                     Only required for 'ocse' algorithm.
+            -S      Sparsity threshold for SBL algorithm.
+            -I      Epsilon for sigma squared estimation in SBL
+                    algorithm.
             """
             )
         sys.exit(2)
@@ -209,7 +215,7 @@ def main(argv):
             parser_file = arg
         elif opt == '-A':
             algorithm = arg
-            alg_set = ['causnet', 'ocse']
+            alg_set = ['causnet', 'ocse', 'sbl']
             if not algorithm in alg_set:
                 print('Inference algorithm not recognized.  '
                       'Please choose one of the following.')
@@ -218,6 +224,10 @@ def main(argv):
                 sys.exit(1)
         elif opt == '-R':
             num_perm = int(arg)
+        elif opt == '-S':
+            sparsity_threshold = float(arg)
+        elif opt == '-I':
+            epsilon = float(arg)
         # No other cases.
     # TODO: Add more input checking.
     if not gene_list_file:
@@ -358,6 +368,12 @@ def main(argv):
                     caspian_out = ca.ocse(
                         perturbed_data_cell, num_perm,
                         significance_level, max_in_degree
+                        )
+                elif algorithm == 'sbl':
+                    caspian_out = ca.sbl_grn(
+                        perturbed_data_cell,
+                        sparsity_threshold=sparsity_threshold,
+                        sigma_eps=epsilon
                         )
                 # TODO: Make returning p-values is compatible with the
                 # ocse algorithm.
