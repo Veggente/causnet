@@ -533,17 +533,13 @@ def sbl_grn(data_cell, sigma_sq_0=0.01, sigma_eps=0.4,
         sigma_sq_new = sigma_sq_0
         for j in range(sigma_max_iter):
             sigma_sq_old = sigma_sq_new
-            print('Using estimated noise variance', sigma_sq_old)
             _, x, _ = sbl(y, phi, sigma_sq_old, **sbl_kargs)
             res = y-phi.dot(x[:, None])
             # Estimate the new noise variance by the mean
             # squared error.
             sigma_sq_new = np.mean(res*res)
-            print('New estimated noise variance', sigma_sq_new)
             sigma_log_ratio = np.log(sigma_sq_new/sigma_sq_old)
             if np.absolute(sigma_log_ratio) < sigma_eps:
-                print('Estimated noise variance reached '
-                      'convergence\n')
                 break
         x_abs = np.absolute(x)
         x_threshold = np.mean(x_abs)*sparsity_threshold

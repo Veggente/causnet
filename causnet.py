@@ -36,6 +36,7 @@ def main(argv):
     # Self-regulation in Granger causality inference.
     self_reg = True
     num_time_lags = 1
+    # TODO: only required by BSLR and oCSE, not SBL.
     max_in_degree = 3
     significance_level = 0.05
     gene_list_file = ''
