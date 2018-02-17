@@ -40,9 +40,9 @@ def main(argv):
                         type=float, default=1)
     args = parser.parse_args()
     # The regulation coefficients have variance one regardless
-    # of the margin.  So the SNR is
-    # (max_in_degree/2)*(1/12)/sigma**2.
-    sigma = np.sqrt(max_in_deg/24/args.snr)
+    # of the margin.  So the SNR is [CITATION NEEDED]
+    # num_times*max_in_degree/36/sigma**2.
+    sigma = np.sqrt(max_in_deg*num_times/36/args.snr)
     adj_mat_file = args.adjmat
     if args.create:
         # Generate a random adjacency matrix file.
