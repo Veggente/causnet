@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """Performance evaluation of ternary classification.
 
+Note in this module:
+* sensitivity is also known as the ternary recall;
+* accuracy is also known as the ternary precision;
+* specificity is one minus the ternary false positive rate.
+
 Functions:
     main: Plot curves and metrics.
     get_sas: Get the sensitivity, accuracy and specificity for a
         ternary classification result as 2-d arrays.
     get_sas_list: Get SAS lists from a weighted network.
-    plot_sas: Plot or save AS and SS curves and metrics.
+    plot_sas: Plot or save PR and ROC curves and metrics.
     get_metric: Calculate classification metric.
     hmean: Calculate the harmonic mean.
     integrate_lin: Integration with linear interpolation.
@@ -21,7 +26,7 @@ matplotlib.style.use('ggplot')
 
 
 def main(argv):
-    """Plot AS and SS curves and metric bars for algorithms.
+    """Plot PR and ROC curves and metric bars for algorithms.
 
     TODO: Use argparse.
 
@@ -32,7 +37,7 @@ def main(argv):
         #3: Names for the algorithms separated by spaces.
 
     Returns:
-        Saves the AS curve, the SS curve and the
+        Saves the PR curve, the ROC curve and the
         metric bars.
     """
     graphml_file = {}
@@ -154,8 +159,7 @@ def get_sas_list(graphml_file, adj_mat_file, thresholds,
 
 def plot_sas(graphml_file, gt, thresholds, self_edge=False,
              plots=False, output='output', metrics='all'):
-    """Plot the accuracy-sensitivity curve and the sensiticity-
-    specificity curve.
+    """Plot the precision-recall curve and the ROC curve.
 
     Args:
         graphml_file: A dictionary with algorithm names as the key
@@ -174,7 +178,7 @@ def plot_sas(graphml_file, gt, thresholds, self_edge=False,
             metrics: A list of metrics.
 
     Returns:
-        Plots or saves two figures for the AS curve and the SS
+        Plots or saves two figures for the PR curve and the ROC
             curve.
     """
     algs = graphml_file.keys()
@@ -188,8 +192,8 @@ def plot_sas(graphml_file, gt, thresholds, self_edge=False,
         metric_list = list(metrics)
     if metric_list:
         metric_display_names = {
-            'auas': 'AUAS',
-            'auss': 'AUSS',
+            'auas': 'APR',
+            'auss': 'AROC',
             'best-f1': 'Best-F1',
             'vusas': 'VUSAS'
             }
@@ -202,7 +206,8 @@ def plot_sas(graphml_file, gt, thresholds, self_edge=False,
         sas = get_sas_list(graphml_file[alg], gt,
                            thresholds, self_edge)
         ax1.plot(sas[0], sas[1], '-o', markerfacecolor='none')
-        ax2.plot(sas[2], sas[0], '-o', markerfacecolor='none')
+        ax2.plot([1-x for x in sas[2]], sas[0], '-o',
+                 markerfacecolor='none')
         if metric_list:
             metric_vals = []
             for metric in metric_list:
@@ -219,21 +224,21 @@ def plot_sas(graphml_file, gt, thresholds, self_edge=False,
                              for m in metric_list])
         ax3.legend(tuple(r[0] for r in rects), algs)
     ax1.legend(algs)
-    ax1.set_title('AS curve')
-    ax1.set_xlabel('Sensitivity')
-    ax1.set_ylabel('Accuracy')
+    ax1.set_title('PR curve')
+    ax1.set_xlabel('Recall')
+    ax1.set_ylabel('Precision')
     ax2.legend(algs)
-    ax2.set_title('SS curve')
-    ax2.set_xlabel('Specificity')
-    ax2.set_ylabel('Sensitivity')
+    ax2.set_title('ROC curve')
+    ax2.set_xlabel('False positive rate')
+    ax2.set_ylabel('Recall')
     if plots:
         fig1.show()
         fig2.show()
         if metric_list:
             fig3.show()
     if output:
-        fig1.savefig(output+'-as.pdf')
-        fig2.savefig(output+'-ss.pdf')
+        fig1.savefig(output+'-pr.pdf')
+        fig2.savefig(output+'-roc.pdf')
         if metric_list:
             fig3.savefig(output+'-metrics.pdf')
     return
