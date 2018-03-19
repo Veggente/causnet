@@ -344,7 +344,9 @@ def main(argv):
                         weight[target_id, parent_id] = thickness(
                             p_values[gene][idx_p], 0.05
                             )
-                    sign_dict[target_id, parent_id] = signs[gene][idx_p]
+                    sign_dict[target_id, parent_id] = (
+                        float(signs[gene][idx_p])
+                        )
         else:
             edge_count = {}
             sign_count = {}
