@@ -237,6 +237,8 @@ def main(argv):
     gene_list = read_gene(gene_list_file)
     if not json_in_file:
         parser_dict = load_parser(parser_file)
+        # TODO: Don't need data_var if not doing perturbation
+        # analysis.
         data_cell, data_var = extract_data_new(
             gene_list, expression_file, cond_list, parser_dict
             )
