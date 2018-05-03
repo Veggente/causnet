@@ -296,7 +296,8 @@ def gen_planted_lindep_data(
 
 def gen_planted_edge_data(
         num_genes, adj_mat_file, sigma, num_experiments, csv_exp_file,
-        csv_design_file, num_replicates, num_times, rand_seed
+        csv_design_file, num_replicates, num_times, rand_seed,
+        true_time=True
         ):
     """Generate data from the planted-edge model.
 
@@ -321,6 +322,8 @@ def gen_planted_edge_data(
         rand_seed: Seed for random number generation.  None for the
             default clock seed (see
             https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.random.RandomState.html#numpy.random.RandomState).
+        true_time: Indicator of using different individual for
+            each sample.
 
     Returns:
         Write an expression file (csv_exp_file, if given) and a
@@ -344,30 +347,16 @@ def gen_planted_edge_data(
     np.random.seed(rand_seed)
     expressions = []
     for i in range(num_experiments):
-        # Generate i.i.d. uniform expressions for all the genes at
-        # time 1.
-        x = np.random.rand(num_genes, 1, num_replicates)
-        for t in range(1, num_times):
-            x_t_minus_1 = x[:, t-1, :]
-            # Influence of the regulating genes with mean subtracted.
-            influence = (x_t_minus_1.T-0.5).dot(adj_mat)
-            # AWGN with noise level sigma.
-            noise = np.random.normal(
-                scale=sigma, size=(num_replicates, num_genes)
-                )
-            # Standard deviations of the sum of influence and noise.
-            sd_lin_expressions = np.sqrt(
-                np.diag(adj_mat.T.dot(adj_mat))/12 + sigma**2
-                )
-            # Standardization of the linear expressions is done via
-            # broadcasting.
-            standardized_lin_expressions = (
-                (influence+noise) / sd_lin_expressions
-                )
-            # Map the linear expressions back to [0, 1] by the CDF of
-            # standard Gaussian (a.k.a. the Phi function).
-            x_t = norm.cdf(standardized_lin_expressions).T
-            x = np.concatenate((x, x_t[:, np.newaxis, :]), axis=1)
+        if true_time:
+            x = np.empty((num_genes, 0, num_replicates))
+            for t in range(1, num_times+1):
+                # Generate new independent trajectory up to time t.
+                x_rep = gen_traj(num_replicates, t, adj_mat, sigma)
+                x_sample = x_rep[:, -1, :]
+                x_sample_3d = x_sample[:, np.newaxis, :]
+                x = np.concatenate((x, x_sample_3d), axis=1)
+        else:
+            x = gen_traj(num_replicates, num_times, adj_mat, sigma)
         expressions.append(x)
     # Output expression file.
     sample_ids = ['Sample'+str(i) for i in
@@ -398,6 +387,64 @@ def gen_planted_edge_data(
                             )
                         idx_sample += 1
     return 0
+
+
+def phi_input(x_t_minus_1, adj_mat, sigma):
+    """Input function in Phi network model.
+
+    Args:
+        x_t_minus_1: An n-by-r array of expression levels at
+            time t-1, where n is the number of genes and r is
+            the number of replicates.
+        adj_mat: An n-by-n array of the adjacency matrix.
+        sigma: Noise level.
+
+    Returns:
+        An n-by-r array of expression levels at time t.
+    """
+    num_genes, num_replicates = x_t_minus_1.shape
+    # Influence of the regulating genes with mean subtracted.
+    influence = (x_t_minus_1.T-0.5).dot(adj_mat)
+    # AWGN with noise level sigma.
+    noise = np.random.normal(
+        scale=sigma, size=(num_replicates, num_genes)
+        )
+    # Standard deviations of the sum of influence and noise.
+    sd_lin_expressions = np.sqrt(
+        np.diag(adj_mat.T.dot(adj_mat))/12 + sigma**2
+        )
+    # Standardization of the linear expressions is done via
+    # broadcasting.
+    standardized_lin_expressions = (
+        (influence+noise) / sd_lin_expressions
+        )
+    # Map the linear expressions back to [0, 1] by the CDF of
+    # standard Gaussian (a.k.a. the Phi function).
+    x_t = norm.cdf(standardized_lin_expressions).T
+    return x_t
+
+
+def gen_traj(num_replicates, num_times, adj_mat, sigma):
+    """Generate a new independent trajectory up to time t.
+
+    Args:
+        num_replicates: Number of replicates.
+        num_times: Number of sample times.
+        adj_mat: An n-by-n array of the adjacency matrix.
+        sigma: Noise level.
+
+    Returns:
+        An n-by-T-by-r array of the expression level trajectory
+        for n genes and r replicates.
+        """
+    num_genes = adj_mat.shape[0]
+    # Generate i.i.d. uniform expressions for all the genes at
+    # time 1.
+    x = np.random.rand(num_genes, 1, num_replicates)
+    for t in range(1, num_times):
+        x_new = phi_input(x[:, t-1, :], adj_mat, sigma)
+        x = np.concatenate((x, x_new[:, np.newaxis, :]), axis=1)
+    return x
 
 
 def gen_adj_mat(num_genes, max_in_deg, margin):
