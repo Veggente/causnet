@@ -38,11 +38,18 @@ def main(argv):
     parser.add_argument("-s", "--snr",
                         help="signal to noise ratio",
                         type=float, default=1)
+    parser.add_argument(
+        "--gamma",
+        help="fraction of power of condition dependent noise",
+        type=float, default=0
+        )
     args = parser.parse_args()
     # The regulation coefficients have variance one regardless
     # of the margin.  So the SNR is [CITATION NEEDED]
     # num_times*max_in_degree/36/sigma**2.
     sigma = np.sqrt(max_in_deg*num_times/36/args.snr)
+    sigma_c = np.sqrt(args.gamma)*sigma
+    sigma_b = np.sqrt(1-args.gamma)*sigma
     adj_mat_file = args.adjmat
     if args.create:
         # Generate a random adjacency matrix file.
@@ -50,9 +57,9 @@ def main(argv):
         adj_mat = gen_adj_mat(args.num_core_genes, max_in_deg, margin)
         np.savetxt(adj_mat_file, adj_mat)
     gen_planted_edge_data(
-        args.num_genes, adj_mat_file, sigma, num_experiments,
-        args.exp, args.design, num_replicates, num_times,
-        rand_seed
+        args.num_genes, adj_mat_file, sigma_c, sigma_b,
+        num_experiments, args.exp, args.design, num_replicates,
+        num_times, rand_seed
         )
     return
 
@@ -295,13 +302,11 @@ def gen_planted_lindep_data(
 
 
 def gen_planted_edge_data(
-        num_genes, adj_mat_file, sigma, num_experiments, csv_exp_file,
-        csv_design_file, num_replicates, num_times, rand_seed,
-        true_time=True
+        num_genes, adj_mat_file, sigma_c, sigma_b, num_experiments,
+        csv_exp_file, csv_design_file, num_replicates, num_times,
+        rand_seed, true_time=True
         ):
     """Generate data from the planted-edge model.
-
-    TODO: Add multifactorial perturbation with and without time series.
 
     Linear dependence is given by the adjacency matrix.  With
     Gaussian noise added, the sum is mapped back to Unif[0, 1]
@@ -313,7 +318,8 @@ def gen_planted_edge_data(
         adj_mat_file: Adjacency matrix file.  The (i, j)th
             element is the regulation strength coefficient of
             gene i over gene j.
-        sigma: Noise level.
+        sigma_c: Condition-dependent noise level.
+        sigma_b: Condition-independent noise level.
         num_experiments: Number of experiments.
         csv_exp_file: Path to output expression file.
         csv_design_file: Path to output design file.
@@ -326,13 +332,12 @@ def gen_planted_edge_data(
             each sample.
 
     Returns:
-        Write an expression file (csv_exp_file, if given) and a
-            design file (csv_design_file) in CSV format.
+        Write an expression file (csv_exp_file) and a
+        design file (csv_design_file, if given) in CSV format.
     """
     # Load adjacency matrix.
     adj_mat = np.loadtxt(adj_mat_file, delimiter=' ')
     # Check size of adjacency matrix.
-    # TODO: Check the adjacency matrix is square.
     num_genes_in_adj_mat = adj_mat.shape[0]
     if num_genes < num_genes_in_adj_mat:
         print('The specified number of genes is smaller than the'
@@ -347,16 +352,20 @@ def gen_planted_edge_data(
     np.random.seed(rand_seed)
     expressions = []
     for i in range(num_experiments):
+        # Generate the condition-dependent standard noise.
+        noise_c = np.random.randn(num_genes, num_times)
         if true_time:
             x = np.empty((num_genes, 0, num_replicates))
             for t in range(1, num_times+1):
                 # Generate new independent trajectory up to time t.
-                x_rep = gen_traj(num_replicates, t, adj_mat, sigma)
+                x_rep = gen_traj(num_replicates, t, adj_mat,
+                                 sigma_b, sigma_c, noise_c)
                 x_sample = x_rep[:, -1, :]
                 x_sample_3d = x_sample[:, np.newaxis, :]
                 x = np.concatenate((x, x_sample_3d), axis=1)
         else:
-            x = gen_traj(num_replicates, num_times, adj_mat, sigma)
+            x = gen_traj(num_replicates, num_times, adj_mat,
+                         sigma_b, sigma_c, noise_c)
         expressions.append(x)
     # Output expression file.
     sample_ids = ['Sample'+str(i) for i in
@@ -389,7 +398,7 @@ def gen_planted_edge_data(
     return 0
 
 
-def phi_input(x_t_minus_1, adj_mat, sigma):
+def phi_input(x_t_minus_1, adj_mat, sigma_b, sigma_c, noise_c_st):
     """Input function in Phi network model.
 
     Args:
@@ -397,7 +406,10 @@ def phi_input(x_t_minus_1, adj_mat, sigma):
             time t-1, where n is the number of genes and r is
             the number of replicates.
         adj_mat: An n-by-n array of the adjacency matrix.
-        sigma: Noise level.
+        sigma_b: Condition-independent Noise level.
+        sigma_c: Condition-dependent noise level.
+        noise_c_st: Standard condition-dependent noise.
+            An n-dim array.
 
     Returns:
         An n-by-r array of expression levels at time t.
@@ -405,18 +417,20 @@ def phi_input(x_t_minus_1, adj_mat, sigma):
     num_genes, num_replicates = x_t_minus_1.shape
     # Influence of the regulating genes with mean subtracted.
     influence = (x_t_minus_1.T-0.5).dot(adj_mat)
-    # AWGN with noise level sigma.
+    # AWGN with noise level sigma_b.
     noise = np.random.normal(
-        scale=sigma, size=(num_replicates, num_genes)
+        scale=sigma_b, size=(num_replicates, num_genes)
         )
     # Standard deviations of the sum of influence and noise.
     sd_lin_expressions = np.sqrt(
-        np.diag(adj_mat.T.dot(adj_mat))/12 + sigma**2
+        np.diag(adj_mat.T.dot(adj_mat))/12 + sigma_b**2
+        + sigma_c**2
         )
     # Standardization of the linear expressions is done via
     # broadcasting.
+    noise_c = sigma_c*noise_c_st.reshape(1, num_genes)
     standardized_lin_expressions = (
-        (influence+noise) / sd_lin_expressions
+        (influence+noise+noise_c) / sd_lin_expressions
         )
     # Map the linear expressions back to [0, 1] by the CDF of
     # standard Gaussian (a.k.a. the Phi function).
@@ -424,27 +438,32 @@ def phi_input(x_t_minus_1, adj_mat, sigma):
     return x_t
 
 
-def gen_traj(num_replicates, num_times, adj_mat, sigma):
-    """Generate a new independent trajectory up to time t.
+def gen_traj(num_replicates, num_times, adj_mat, sigma_b,
+             sigma_c, noise_c):
+    """Generate a new independent trajectory from time 0 up to time T.
+
+    The same condition-dependent noise is shared across the replicates.
 
     Args:
         num_replicates: Number of replicates.
         num_times: Number of sample times.
         adj_mat: An n-by-n array of the adjacency matrix.
-        sigma: Noise level.
+        sigma_b: Condition-independent noise level.
+        sigma_c: Condition-dependent noise level.
+        noise_c: Standard condition-dependent noise.  An n-by-T array.
 
     Returns:
         An n-by-T-by-r array of the expression level trajectory
         for n genes and r replicates.
         """
     num_genes = adj_mat.shape[0]
-    # Generate i.i.d. uniform expressions for all the genes at
-    # time 1.
-    x = np.random.rand(num_genes, 1, num_replicates)
-    for t in range(1, num_times):
-        x_new = phi_input(x[:, t-1, :], adj_mat, sigma)
+    # Generate constant 1/2 expression levels for all genes at time 0.
+    x = np.ones((num_genes, 1, num_replicates))/2
+    for t in range(1, num_times+1):
+        x_new = phi_input(x[:, t-1, :], adj_mat, sigma_b, sigma_c,
+                          noise_c[:, t-1])
         x = np.concatenate((x, x_new[:, np.newaxis, :]), axis=1)
-    return x
+    return x[:, 1:, :]
 
 
 def gen_adj_mat(num_genes, max_in_deg, margin):
