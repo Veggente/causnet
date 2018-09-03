@@ -15,7 +15,7 @@ import numpy as np
 
 def show_histograms(graphml_file, ylim=0, self_edge=False,
                     output='', display=False, figsize=None,
-                    show_mean=False):
+                    show_mean=False, dpi=300):
     """Show histograms of the edge weights.
 
     Args:
@@ -27,6 +27,7 @@ def show_histograms(graphml_file, ylim=0, self_edge=False,
         figsize: Figure size.
         show_mean: Indicator for showing the mean visibility
             with a black vertical line.
+        dpi: DPI for png figure.  Default is 300.
 
     Returns:
         Plots the histograms.
@@ -56,7 +57,6 @@ def show_histograms(graphml_file, ylim=0, self_edge=False,
             ax = [ax]
         ax[idx_gf].bar(bins[:-1]+width/2, hist/total_num_edges,
                        width)
-        # ax[idx_gf].legend()
         ax[idx_gf].set_title(alg)
         if ylim:
             ax[idx_gf].set_ylim(0, ylim)
@@ -64,7 +64,7 @@ def show_histograms(graphml_file, ylim=0, self_edge=False,
             ax[idx_gf].axvline(np.mean(weights), color='k')
     plt.tight_layout()
     if output:
-        fig.savefig(output)
+        fig.savefig(output, dpi=dpi)
     if display:
         fig.show()
     return
@@ -72,7 +72,7 @@ def show_histograms(graphml_file, ylim=0, self_edge=False,
 
 def hist_w_correct(graphml_file, ground_truth, ylim=0,
                    self_edge=False, output='', display=False,
-                   figsize=None, show_mean=False):
+                   figsize=None, show_mean=False, dpi=300):
     """Histogram with correctness.
 
     Args:
@@ -85,6 +85,7 @@ def hist_w_correct(graphml_file, ground_truth, ylim=0,
         figsize: Figure size.
         show_mean: Indicator for showing the mean visibility with
             a black vertical line.
+        dpi: DPI for png figure.  Default is 300.
 
     Returns:
         Plots the histograms or saves as a file.
@@ -159,7 +160,7 @@ def hist_w_correct(graphml_file, ground_truth, ylim=0,
         ax[idx_gf].set_title(alg)
     plt.tight_layout()
     if output:
-        fig.savefig(output)
+        fig.savefig(output, dpi=dpi)
     if display:
         fig.show()
     return
