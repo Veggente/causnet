@@ -43,7 +43,7 @@ def main(argv):
         help="fraction of power of condition dependent noise",
         type=float, default=0
         )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     # The regulation coefficients have variance one regardless
     # of the margin.  So the SNR is [CITATION NEEDED]
     # num_times*max_in_degree/36/sigma**2.
