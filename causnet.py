@@ -327,6 +327,15 @@ def main(argv):
                     data_cell, num_perm, significance_level,
                     max_in_degree
                     )
+            elif algorithm == 'sbl':
+                caspian_out = ca.sbl_grn(
+                    data_cell,
+                    sparsity_threshold=sparsity_threshold,
+                    sigma_eps=epsilon
+                    )
+            else:
+                print("Unknown algorithm.")
+                return 1
             # TODO: Make returning p-values is compatible with the
             # ocse algorithm.
             if significance_level:

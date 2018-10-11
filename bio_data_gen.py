@@ -11,9 +11,6 @@ import argparse
 
 
 def main(argv):
-    num_experiments = 10
-    csv_design_file = 'design.csv'
-    num_replicates = 3
     num_times = 6
     max_in_deg = 3
     rand_seed = None
@@ -46,6 +43,10 @@ def main(argv):
         )
     parser.add_argument("-m", "--method", choices=['phi', 'glm'],
                         help="data generation method", default='phi')
+    parser.add_argument("--num-cond", help="number of conditions",
+                        type=int, default=10)
+    parser.add_argument("--num-rep", help="number of replicates",
+                        type=int, default=3)
     args = parser.parse_args(argv)
     # The regulation coefficients have variance one regardless
     # of the margin.  So the SNR is [CITATION NEEDED]
@@ -61,7 +62,7 @@ def main(argv):
         np.savetxt(adj_mat_file, adj_mat)
     gen_planted_edge_data(
         args.num_genes, adj_mat_file, sigma_c, sigma_b,
-        num_experiments, args.exp, args.design, num_replicates,
+        args.num_cond, args.exp, args.design, args.num_rep,
         num_times, rand_seed, method=args.method
         )
     return
@@ -231,8 +232,14 @@ def gen_traj(num_replicates, num_times, adj_mat, sigma_b,
         for n genes and r replicates.
     """
     num_genes = adj_mat.shape[0]
-    # Generate constant 1/2 expression levels for all genes at time 0.
-    x = np.ones((num_genes, 1, num_replicates))/2
+    if method == 'phi':
+        # Generate constant 1/2 expression levels for all genes at
+        # time 0 for the Phi-net model.
+        x = np.ones((num_genes, 1, num_replicates))/2
+    else:
+        # Generate constant 0 expression levels for all genes at
+        # time 0 for the Gaussian linear model.
+        x = np.zeros((num_genes, 1, num_replicates))
     for t in range(1, num_times+1):
         x_new = phi_input(x[:, t-1, :], adj_mat, sigma_b, sigma_c,
                           noise_c[:, t-1], method)
