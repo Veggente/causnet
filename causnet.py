@@ -676,7 +676,7 @@ def generate_exp_filename(path, gene_file):
 
 def sample_var(x):
     """Sample variance of a list."""
-    if x:
+    if len(x) > 1:
         return np.var(x)/(1-1/len(x))
     else:
         return 0.0
