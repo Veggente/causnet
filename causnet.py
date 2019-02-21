@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import sys
 import getopt
 import numpy as np
-import causnet_bslr as ca
 from tqdm import tqdm
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
@@ -16,6 +15,8 @@ import ast
 import math
 import scipy.stats
 import itertools
+
+import causnet_bslr as ca
 
 
 def main(argv):
@@ -1379,6 +1380,80 @@ def load_parser(parser_table_file):
             words = line.strip().split(',')
             parser_dict[words[0]] = tuple(words[1:])
     return parser_dict
+
+
+def bslr(parser_dict, exp_df, num_experiments, num_times,
+         num_genes, num_replicates, max_in_degree,
+         significance_level):
+    """BSLR with averaging.
+
+    Args:
+        parser_dict: A dictionary.
+            Sample ID parser.
+        exp_df: A dataframe.
+            Gene expression levels with gene IDs as the
+            index and the sample IDs as the column names.
+        num_experiments: Number of experiments.
+        num_times: Number of times.
+        num_genes: Number of genes.
+        num_replicates: Number of replicates.
+        max_in_degree: Maximum in-degree.
+        significance_level: Significance level for Granger
+            causality F-test.
+
+    Returns:
+        A 2d array of the reconstructed network.
+    """
+    # Self-regulation in Granger causality inference.
+    self_reg = True
+    num_time_lags = 1
+    # Time-dependent standardization off.
+    tds = False
+    data_cell = average_full_factorial(
+        exp_df, parser_dict, num_experiments, num_times,
+        num_genes, num_replicates
+        )
+    parents, signs = ca.caspian(
+        data_cell, num_time_lags, max_in_degree,
+        significance_level, self_reg, tds
+        )
+    adj_mat = np.zeros((num_genes, num_genes))
+    for gene, parents_for_gene in enumerate(parents):
+        for idx_p, parent in enumerate(parents_for_gene):
+            adj_mat[parent, gene] = signs[gene][idx_p]
+    return adj_mat
+
+
+def average_full_factorial(exp_df, parser_dict, num_experiments,
+                           num_times, num_genes, num_replicates):
+    """Average replicates in a full factorial design.
+
+    Conditions must be str of integers ('0', '1', ..., 'C-1'),
+    and times must be str of integers ('0', '1', ..., 'T-1').
+
+    Args:
+        parser_dict: A dictionary.
+            Sample ID parser.
+        exp_df: A dataframe.
+            Gene expression levels with gene IDs as the index
+            and the sample IDs as the column names.
+        num_experiments: Number of experiments.
+        num_times: Number of times.
+        num_genes: Number of genes.
+        num_replicates: Number of replicates.
+
+    Returns:
+        A 3-d array of the average TPMs.
+            Axis 0: condition.
+            Axis 1: time.
+            Axis 2: gene.
+    """
+    data_cell = np.zeros((num_experiments, num_times, num_genes))
+    for s in parser_dict:
+        condition = int(parser_dict[s][0])
+        time = int(parser_dict[s][1])
+        data_cell[condition, time] += exp_df[s]/num_replicates
+    return data_cell
 
 
 if __name__ == "__main__":

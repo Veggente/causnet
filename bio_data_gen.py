@@ -8,6 +8,7 @@ from scipy.integrate import odeint
 from scipy.stats import norm
 import pandas as pd
 import argparse
+import os
 
 
 def main(argv):
@@ -69,34 +70,43 @@ def main(argv):
 
 
 def gen_planted_edge_data(
-        num_genes, adj_mat_file, sigma_c, sigma_b, num_experiments,
+        num_genes, adj_mat, sigma_c, sigma_b, num_experiments,
         csv_exp_file, csv_design_file, num_replicates, num_times,
-        rand_seed, true_time=True, method='phi'
+        rand_seed, true_time=True, method='phi', noise=0.0
         ):
     """Generate time series expression data.
 
     Args:
-        num_genes: Number of genes.  Should be at least as large
-            as the adjacency matrix.
-        adj_mat_file: Adjacency matrix file.  The sign of the (i, j)th
-            element for i not equal to j indicates the type of
-            regulation of j by i, and the absolute value the strength
-            of the regulation.  The negative of the (i, i)th element
-            is the degration rate.
-        sigma_c: Condition-dependent noise level.
-        sigma_b: Condition-independent noise level.
+        num_genes: Number of genes.  Must be at least as large
+            as the number of rows (or columns) of the adjacency
+            matrix.  If num_genes is strictly larger than the
+            adjacency matrix, isolated genes are padded.
+        adj_mat: Adjacency matrix.
+            This variable can be either the path to the adjacency
+            matrix file as a str, or the matrix itself as a numpy
+            array.  The sign of the (i, j)th element for i not equal
+            to j indicates the type of regulation of j by i, and the
+            absolute value the strength of the regulation.  The
+            diagonal elements can be either self-regulation or
+            negative of the degradation rate.
+        sigma_c: Condition-dependent variation level.
+        sigma_b: Condition-independent variation level.
         num_experiments: Number of experiments.
         csv_exp_file: Path to output expression file.
+            Return the DataFrame if csv_exp_file is an empty string.
         csv_design_file: Path to output design file.
+            If an empty string, no design file is written.
+            If file exists, do not overwrite it.
         num_replicates: Number of replicates.
         num_times: Number of sample times.
         rand_seed: Seed for random number generation.  None for the
             default clock seed (see
             https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.random.RandomState.html#numpy.random.RandomState).
         true_time: Indicator of using different individual for
-            each sample.
+            each sample (i.e., one-shot sampling).
         method: Dynamics.  Can be 'phi' for Phi-net dynamics or 'glm'
             for Gaussian linear model dynamics.  Default is Phi-net.
+        noise: Observation noise level.
 
     Returns:
         Write an expression file (csv_exp_file) and a
@@ -104,7 +114,8 @@ def gen_planted_edge_data(
 
     """
     # Load adjacency matrix.
-    adj_mat = np.loadtxt(adj_mat_file, delimiter=' ')
+    if isinstance(adj_mat, str):
+        adj_mat = np.loadtxt(adj_mat, delimiter=' ')
     # Check size of adjacency matrix.
     num_genes_in_adj_mat = adj_mat.shape[0]
     if num_genes < num_genes_in_adj_mat:
@@ -120,7 +131,7 @@ def gen_planted_edge_data(
     np.random.seed(rand_seed)
     expressions = []
     for i in range(num_experiments):
-        # Generate the condition-dependent standard noise.
+        # Generate the condition-dependent standard variation.
         noise_c = np.random.randn(num_genes, num_times)
         if true_time:
             x = np.empty((num_genes, 0, num_replicates))
@@ -148,9 +159,10 @@ def gen_planted_edge_data(
             ), axis=1)
     df = pd.DataFrame(data=flattened_exp, columns=sample_ids,
                       index=genes)
-    df.to_csv(csv_exp_file)
-    # Output design file.
-    if csv_design_file:
+    df = df+np.random.randn(*df.shape)*noise
+    # write design file if it is not empty str and it does not exist
+    # already.
+    if csv_design_file and not os.path.isfile(csv_design_file):
         with open(csv_design_file, 'w') as f:
             idx_sample = 0
             for i in range(num_experiments):
@@ -163,7 +175,11 @@ def gen_planted_edge_data(
                             +str(j)+'\n'
                             )
                         idx_sample += 1
-    return 0
+    if csv_exp_file:
+        df.to_csv(csv_exp_file)
+        return 0
+    else:
+        return df
 
 
 def phi_input(x_t_minus_1, adj_mat, sigma_b, sigma_c, noise_c_st,
@@ -230,6 +246,7 @@ def gen_traj(num_replicates, num_times, adj_mat, sigma_b,
     Returns:
         An n-by-T-by-r array of the expression level trajectory
         for n genes and r replicates.
+
     """
     num_genes = adj_mat.shape[0]
     if method == 'phi':
@@ -253,7 +270,8 @@ def gen_adj_mat(num_genes, max_in_deg, margin):
     Assume the in-degree is uniformly distributed over 0, 1, 2,
     ..., max_in_deg.  Regulation strength coefficients are
     Gaussian shifted away from the origin by the margin with
-    variance one.
+    variance one.  No self regulation is generated; i.e., the diagonal
+    elements are zeros.
 
     Args:
         num_genes: The number of genes.
@@ -268,6 +286,7 @@ def gen_adj_mat(num_genes, max_in_deg, margin):
     Returns:
         A 2-d array of the adjacency matrix of the generated
         network.
+
     """
     adj_mat = np.zeros((num_genes, num_genes))
     in_degrees = np.random.randint(max_in_deg+1, size=num_genes)
