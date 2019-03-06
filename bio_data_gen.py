@@ -90,7 +90,13 @@ def gen_planted_edge_data(
             diagonal elements can be either self-regulation or
             negative of the degradation rate.
         sigma_c: Condition-dependent variation level.
+            If scalar, it applies to all genes.  Otherwise the
+            size must be equal to gene number and each element
+            applies to a single gene.
         sigma_b: Condition-independent variation level.
+            If scalar, it applies to all genes.  Otherwise the
+            size must be equal to gene number and each element
+            applies to a single gene.
         num_experiments: Number of experiments.
         csv_exp_file: Path to output expression file.
             Return the DataFrame if csv_exp_file is an empty string.
@@ -192,7 +198,13 @@ def phi_input(x_t_minus_1, adj_mat, sigma_b, sigma_c, noise_c_st,
             the number of replicates.
         adj_mat: An n-by-n array of the adjacency matrix.
         sigma_b: Condition-independent noise level.
+            If scalar, it applies to all genes.  Otherwise the
+            size must be equal to gene number and each element
+            applies to a single gene.
         sigma_c: Condition-dependent noise level.
+            If scalar, it applies to all genes.  Otherwise the
+            size must be equal to gene number and each element
+            applies to a single gene.
         noise_c_st: Standard condition-dependent noise.
             An n-dim array.
         method: Dynamic model.  Can be 'phi' or 'glm'.
@@ -201,11 +213,16 @@ def phi_input(x_t_minus_1, adj_mat, sigma_b, sigma_c, noise_c_st,
         An n-by-r array of expression levels at time t.
     """
     num_genes, num_replicates = x_t_minus_1.shape
-    # Discrete AWGN with noise level sigma_b.
-    noise = np.random.normal(
-        scale=sigma_b, size=(num_replicates, num_genes)
-        )
-    noise_c = sigma_c*noise_c_st.reshape(1, num_genes)
+    # Discrete AWGN with noise level or noise level array sigma_b.
+    # For array sigma_b, the following broadcasting happens:
+    #     standard_noise: R x n
+    #     sigma_b:            n
+    #     product:        R x n
+    # See https://docs.scipy.org/doc/numpy-1.13.0/user/basics.broadcasting.html
+    noise = (np.random.normal(size=(num_replicates, num_genes))
+             * np.asarray(sigma_b))
+    noise_c = (noise_c_st.reshape(1, num_genes)
+               * np.asarray(sigma_c))
     if method == 'phi':
         # Influence of the regulating genes with mean subtracted.
         influence = (x_t_minus_1.T-0.5).dot(adj_mat)
@@ -239,7 +256,13 @@ def gen_traj(num_replicates, num_times, adj_mat, sigma_b,
         num_times: Number of sample times.
         adj_mat: An n-by-n array of the adjacency matrix.
         sigma_b: Condition-independent noise level.
+            If scalar, it applies to all genes.  Otherwise the
+            size must be equal to gene number and each element
+            applies to a single gene.
         sigma_c: Condition-dependent noise level.
+            If scalar, it applies to all genes.  Otherwise the
+            size must be equal to gene number and each element
+            applies to a single gene.
         noise_c: Standard condition-dependent noise.  An n-by-T array.
         method: Dynamic model.  Can be 'phi' or 'glm'.
 
