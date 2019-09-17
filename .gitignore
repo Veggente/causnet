@@ -10,3 +10,4 @@ qsub-output/
 *.csv
 *.xml
 *.pdf
+*.pkl

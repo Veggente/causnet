@@ -59,10 +59,15 @@ def get_sas(decision, prior, self_edge=False):
     """Get sensitivity, accuracy and specificity for a ternary
     classification decision.
 
+    Note the entries must be of float type (not int type) for
+    inserting the NaNs in false self edge case.
+
     Args:
-        decision: A 2-d array with 1, -1 and 0s representing the
+        decision: array
+            A 2-d array with 1.0, -1.0 and 0.0s representing the
             classification decision.
-        prior: A 2-d array with 1, -1 and 0s representing the
+        prior array
+            A 2-d array with 1.0, -1.0 and 0.0s representing the
             ground truth.
         self_edge: Indicator of whether self-edges are allowed.
             Default is false; i.e., self-edges in the ground truth

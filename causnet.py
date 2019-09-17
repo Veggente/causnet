@@ -1401,8 +1401,8 @@ def bslr(parser_dict, exp_df, num_experiments, num_times,
         significance_level: Significance level for Granger
             causality F-test.
 
-    Returns:
-        A 2d array of the reconstructed network.
+    Returns: array
+        A 2d array of the reconstructed network (sign only).
     """
     # Self-regulation in Granger causality inference.
     self_reg = True
