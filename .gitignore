@@ -1,9 +1,7 @@
-*.txt
 .DS_Store
 __pycache__/
 data/
 data_temp/
-*testing*
 qsub-output/
 *.pyc
 *.xlsx
@@ -11,3 +9,4 @@ qsub-output/
 *.xml
 *.pdf
 *.pkl
+*.eps

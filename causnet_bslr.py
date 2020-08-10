@@ -341,7 +341,7 @@ def ocse(data_cell, num_perm, alpha=0.05, sparsity=0):
     else:
         num_iterations = num_genes
     # Initialize the list of parents and signs for all the target
-    #genes.
+    # genes.
     parent_list = []
     sign_list = []
     for i in range(num_genes):

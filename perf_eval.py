@@ -66,7 +66,7 @@ def get_sas(decision, prior, self_edge=False):
         decision: array
             A 2-d array with 1.0, -1.0 and 0.0s representing the
             classification decision.
-        prior array
+        prior: array
             A 2-d array with 1.0, -1.0 and 0.0s representing the
             ground truth.
         self_edge: Indicator of whether self-edges are allowed.
