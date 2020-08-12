@@ -56,6 +56,7 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
         spec_rad: float,
         num_sims: int,
         num_cond: int,
+        bayes: bool = True,
     ) -> float:
         """Simulate genie-aided Bhattacharyya lower bound.
 
@@ -68,14 +69,19 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
             spec_rad: The desired spectral radius.
             num_sims: Number of simulations.
             num_cond: Number of conditions.
+            bayes: Use prob_conn as the Bayesian prior.
 
         Returns:
-            Bhattacharyya lower and upper bounds.
+            Bhattacharyya lower bound.
 
         """
         lb_list = []
         if num_genes > 1:
             lb_cross_list = []
+        if bayes:
+            prior = (1-prob_conn, prob_conn)
+        else:
+            prior = (1/2, 1/2)
         for i in range(num_sims):
             er_graph, weight = erdos_renyi(num_genes, prob_conn, spec_rad)
             # Autoregulation.  Genie tells everything except the self-edge (0, 0).
@@ -101,7 +107,7 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
             rho_auto = bhatta_coeff(auto_cov_mat_0, auto_cov_mat_1)
             lb_list.append(
                 self.lower_bound_on_error_prob(
-                    rho_auto, num_cond, prior=(1 - prob_conn, prob_conn)
+                    rho_auto, num_cond, prior=prior
                 )
             )
             if num_genes > 1:
@@ -130,7 +136,7 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
                 rho_cross = bhatta_coeff(cross_cov_mat_0, cross_cov_mat_1)
                 lb_cross_list.append(
                     self.lower_bound_on_error_prob(
-                        rho_cross, num_cond, prior=(1 - prob_conn, prob_conn)
+                        rho_cross, num_cond, prior=prior
                     )
                 )
         auto_lb_stat = np.mean(lb_list), np.std(lb_list)
@@ -344,12 +350,12 @@ def gen_cov_mat(
     return cov_mat
 
 def erdos_renyi(
-    num_genes: int, prob_conn: float, rho: float
+    num_genes: int, prob_conn: float, spec_rad: float = 0.8
 ) -> Tuple[np.ndarray, float]:
     """Initialize an Erdos Renyi network as in Sun–Taylor–Bollt 2015.
 
     If the spectral radius is positive, the matrix is normalized
-    to a spectral radius of rho and the scale shows the
+    to a spectral radius of spec_rad and the scale shows the
     normalization.  If the spectral radius is zero, the returned
     matrix will have entries of 0, 1, and -1, and the scale is set
     to zero.
@@ -357,7 +363,7 @@ def erdos_renyi(
     Args:
         num_genes: Number of genes/nodes.
         prob_conn: Probability of connection.
-        rho: The desired spectral radius.
+        spec_rad: The desired spectral radius.
 
     Returns:
         Adjacency matrix and its scale.
@@ -367,7 +373,7 @@ def erdos_renyi(
         values=(np.arange(3), [prob_conn / 2, 1 - prob_conn, prob_conn / 2])
     )
     signed_edges = vals[signed_edge_dist.rvs(size=(num_genes, num_genes))]
-    original_rho = max(abs(np.linalg.eigvals(signed_edges)))
-    if original_rho:
-        return signed_edges / original_rho * rho, rho / original_rho
+    original_spec_rad = max(abs(np.linalg.eigvals(signed_edges)))
+    if original_spec_rad:
+        return signed_edges / original_spec_rad * spec_rad, spec_rad / original_spec_rad
     return signed_edges, 0

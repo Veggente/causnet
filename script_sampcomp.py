@@ -152,6 +152,7 @@ def plot_lb_w_spec_rad(num_sims: int = 20, sigma_te_sq: float = 0) -> None:
         )
     )
 
+
 def plot_sub_samp(seed: int = 0):
     """Plot subsampling results."""
     np.random.seed(seed)
@@ -170,3 +171,27 @@ def plot_sub_samp(seed: int = 0):
     plt.xlabel("sampling interval T")
     plt.ylabel("Bhattacharyya coefficient")
     plt.savefig("subsampling_s{}.eps".format(seed))
+
+
+def script_stb_lb():
+    """Verify lower bound on average error rate with STB."""
+    num_genes = 200
+    sigma_en_sq = 1
+    sigma_in_sq = 0
+    sigma_te_sq = 0
+    samp_times = 10
+    num_rep = 1
+    prob_conn = 0.05
+    spec_rad = 0.1
+    num_sims = 10
+    num_cond = 200
+    network_ht = sampcomp.NetworkHypothesisTesting()
+    network_ht.sigma_en_sq = sigma_en_sq
+    network_ht.sigma_in_sq = sigma_in_sq
+    network_ht.sigma_te_sq = sigma_te_sq
+    network_ht.samp_times = samp_times
+    network_ht.num_rep = num_rep
+    sim_lower_bound = network_ht.sim_er_genie_bhatta_lb(
+        num_genes, prob_conn, spec_rad, num_sims, num_cond, bayes=False
+    )
+    print(sim_lower_bound)

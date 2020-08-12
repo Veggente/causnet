@@ -88,7 +88,6 @@ class TestSampComp(unittest.TestCase):
         sigma_en_sq = 1
         sigma_in_sq = 0
         sigma_te_sq = 0
-        prob_error = 0.05
         samp_times = 2
         num_rep = 1
         prob_conn = 0.5
