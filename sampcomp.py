@@ -199,43 +199,60 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
 
 
 def cov_mat_small(
-    adj_mat, sigma_in_sq, sigma_en_sq, sigma_te_sq, tidx1, tidx2, ridx1, ridx2, one_shot
-):
-    """Calculate small covariance matrix"""
+    adj_mat: np.ndarray, sigma_in_sq: np.ndarray, sigma_en_sq: np.ndarray, sigma_te_sq: np.ndarray, tidx1: int, tidx2: int, ridx1: int, ridx2: int, one_shot: bool
+) -> np.ndarray:
+    """Calculates small covariance matrix.
+
+    Args:
+        adj_mat: Adjacency matrix.
+        sigma_in_sq: Individual variance.
+        sigma_en_sq: Environmental variance.
+        sigma_te_sq: Technical variance.
+        tidx1: Time index 1.
+        tidx2: Time index 2.
+        ridx1: Replicate index 1.
+        ridx2: Replicate index 2.
+        one_shot: One-shot sampling.
+
+    Returns:
+        Small covariance matrix.
+    """
     num_genes = adj_mat.shape[0]
     if (tidx1, ridx1) == (tidx2, ridx2):
-        return (sigma_in_sq + sigma_en_sq) * geom_sum_mat(
+        cov_mat = (sigma_in_sq + sigma_en_sq) * geom_sum_mat(
             adj_mat, tidx1 + 1, tidx2 + 1
         ) + sigma_te_sq * np.identity(num_genes)
     elif ridx1 == ridx2 and not one_shot:
-        return (sigma_in_sq + sigma_en_sq) * geom_sum_mat(adj_mat, tidx1 + 1, tidx2 + 1)
+        cov_mat = (sigma_in_sq + sigma_en_sq) * geom_sum_mat(adj_mat, tidx1 + 1, tidx2 + 1)
     else:
-        return sigma_en_sq * geom_sum_mat(adj_mat, tidx1 + 1, tidx2 + 1)
+        cov_mat = sigma_en_sq * geom_sum_mat(adj_mat, tidx1 + 1, tidx2 + 1)
+    return cov_mat
 
 
-def geom_sum_mat(a, k1, k2):
+def geom_sum_mat(a: np.ndarray, k1: int, k2: int, skip: bool = False) -> np.ndarray:
     """Partial sum of the matrix geometric series.
 
     Args:
-        a: array
-            A square matrix.
-        k1: int
-            Maximum power on the left.
-        k2: int
-            Maximum power on the right.
+        a: A square matrix.
+        k1: Maximum power on the left plus one.
+        k2: Maximum power on the right plus one.
+        skip: Skip the first term in the summation.
 
-    Returns: array
+    Returns:
         sum_{tau = 1}^{k1 wedge k2}(a^T)**(k1-tau)*a**(k2-tau).
     """
+    if not k1 or not k2:
+        return np.zeros(a.shape)
     a_power = np.identity(a.shape[0])
     sum_mat = np.identity(a.shape[0])
     for i in range(min(k1, k2) - 1):
         a_power = a.T.dot(a_power).dot(a)
+        if skip and i == 0:
+            continue
         sum_mat += a_power
     if k1 >= k2:
         return np.linalg.matrix_power(a.T, k1 - k2).dot(sum_mat)
-    else:
-        return sum_mat.dot(np.linalg.matrix_power(a, k2 - k1))
+    return sum_mat.dot(np.linalg.matrix_power(a, k2 - k1))
 
 
 def bhatta_coeff(cov_mat_0, cov_mat_1):
@@ -305,8 +322,8 @@ def gen_cov_mat(
     """Generate covariance matrix.
 
     Generate covariance matrix for the observations of possibly
-    multiple genes under Gaussian linear model for a single
-    condition.
+    multiple genes under Gaussian linear model for a single condition.
+    The initial condition (before time 0) is zero.
 
     Args:
         adj_mat: Network adjacency matrix.

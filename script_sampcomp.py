@@ -1,4 +1,4 @@
-"""Script for sampcomp"""
+"""Script for sampcomp."""
 import numpy as np
 import matplotlib.pyplot as plt
 import sampcomp
@@ -7,7 +7,7 @@ plt.style.use("ggplot")
 
 
 def script_plot_1():
-    """Single edge with autoregulation"""
+    """Single edge with autoregulation."""
     diagonal = 0.8
     sampcomp.plot_bounds(
         saveas="bhatta-bound-a{}-s0-d0.1.eps".format(diagonal), diagonal=diagonal,
