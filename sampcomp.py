@@ -224,7 +224,11 @@ def cov_mat_small(  # pylint: disable=too-many-arguments
     """
     num_genes = adj_mat.shape[0]
     if initial is not None:
-        cov_mat = np.linalg.matrix_power(adj_mat.T, tidx1).dot(initial).dot(np.linalg.matrix_power(adj_mat, tidx2))
+        cov_mat = (
+            np.linalg.matrix_power(adj_mat.T, tidx1)
+            .dot(initial)
+            .dot(np.linalg.matrix_power(adj_mat, tidx2))
+        )
         times = (tidx1, tidx2)
     else:
         cov_mat = np.zeros(adj_mat.shape)
@@ -234,9 +238,7 @@ def cov_mat_small(  # pylint: disable=too-many-arguments
             adj_mat, *times
         ) + sigma_te_sq * np.identity(num_genes)
     elif ridx1 == ridx2 and not one_shot:
-        cov_mat += (sigma_in_sq + sigma_en_sq) * geom_sum_mat(
-            adj_mat, *times
-        )
+        cov_mat += (sigma_in_sq + sigma_en_sq) * geom_sum_mat(adj_mat, *times)
     else:
         cov_mat += sigma_en_sq * geom_sum_mat(adj_mat, *times)
     return cov_mat
@@ -329,7 +331,7 @@ def plot_bounds(sigma_te_sq=0, saveas="bhatta_bound.eps", start_delta=0.1, diago
     plt.savefig(saveas)
 
 
-def gen_cov_mat(  # pylint: disable=too-many-arguments
+def gen_cov_mat(  # pylint: disable=too-many-arguments, too-many-locals
     adj_mat: np.ndarray,
     sigma_in_sq: float,
     sigma_en_sq: float,
@@ -362,7 +364,9 @@ def gen_cov_mat(  # pylint: disable=too-many-arguments
 
     """
     if initial is not None and (num_rep != 1 or one_shot):
-        raise ValueError("Can only take initial covariance matrix for single replicate multi-shot sampling.")
+        raise ValueError(
+            "Can only take initial covariance matrix for single replicate multi-shot sampling."
+        )
     num_genes = adj_mat.shape[0]
     num_samples = num_time * num_rep * num_genes
     cov_mat = np.empty((num_samples, num_samples))
@@ -421,7 +425,10 @@ def erdos_renyi(
         return signed_edges / original_spec_rad * spec_rad, spec_rad / original_spec_rad
     return signed_edges, 0
 
-def asymptotic_cov_mat(initial: np.ndarray, adj_mat: np.ndarray, sigma_sq: float, num_iter: int) -> Tuple[np.ndarray, float]:
+
+def asymptotic_cov_mat(
+    initial: np.ndarray, adj_mat: np.ndarray, sigma_sq: float, num_iter: int
+) -> Tuple[np.ndarray, float]:
     """Gets the asymptotic covariance matrix iteratively.
 
     Args:
@@ -435,8 +442,10 @@ def asymptotic_cov_mat(initial: np.ndarray, adj_mat: np.ndarray, sigma_sq: float
     """
     last_cov_mat = initial
     for i in range(num_iter):
-        new_cov_mat = adj_mat.T.dot(last_cov_mat).dot(adj_mat)+sigma_sq*np.identity(adj_mat.shape[0])
-        if i == num_iter-1:
-            difference = np.linalg.norm(new_cov_mat-last_cov_mat)
+        new_cov_mat = adj_mat.T.dot(last_cov_mat).dot(adj_mat) + sigma_sq * np.identity(
+            adj_mat.shape[0]
+        )
+        if i == num_iter - 1:
+            difference = np.linalg.norm(new_cov_mat - last_cov_mat)
         last_cov_mat = new_cov_mat
     return last_cov_mat, difference
