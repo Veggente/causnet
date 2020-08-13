@@ -1,5 +1,5 @@
 """Calculate sample complexity of network reconstruction"""
-from typing import Tuple
+from typing import Tuple, Optional
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import rv_discrete
@@ -202,6 +202,7 @@ def cov_mat_small(  # pylint: disable=too-many-arguments
     ridx1: int,
     ridx2: int,
     one_shot: bool,
+    initial: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """Calculates small covariance matrix.
 
@@ -215,21 +216,29 @@ def cov_mat_small(  # pylint: disable=too-many-arguments
         ridx1: Replicate index 1.
         ridx2: Replicate index 2.
         one_shot: One-shot sampling.
+        initial: Initial covariance matrix for single replicate
+            multi-shot sampling.
 
     Returns:
         Small covariance matrix.
     """
     num_genes = adj_mat.shape[0]
+    if initial is not None:
+        cov_mat = np.linalg.matrix_power(adj_mat.T, tidx1).dot(initial).dot(np.linalg.matrix_power(adj_mat, tidx2))
+        times = (tidx1, tidx2)
+    else:
+        cov_mat = np.zeros(adj_mat.shape)
+        times = (tidx1 + 1, tidx2 + 1)
     if (tidx1, ridx1) == (tidx2, ridx2):
-        cov_mat = (sigma_in_sq + sigma_en_sq) * geom_sum_mat(
-            adj_mat, tidx1 + 1, tidx2 + 1
+        cov_mat += (sigma_in_sq + sigma_en_sq) * geom_sum_mat(
+            adj_mat, *times
         ) + sigma_te_sq * np.identity(num_genes)
     elif ridx1 == ridx2 and not one_shot:
-        cov_mat = (sigma_in_sq + sigma_en_sq) * geom_sum_mat(
-            adj_mat, tidx1 + 1, tidx2 + 1
+        cov_mat += (sigma_in_sq + sigma_en_sq) * geom_sum_mat(
+            adj_mat, *times
         )
     else:
-        cov_mat = sigma_en_sq * geom_sum_mat(adj_mat, tidx1 + 1, tidx2 + 1)
+        cov_mat += sigma_en_sq * geom_sum_mat(adj_mat, *times)
     return cov_mat
 
 
@@ -329,6 +338,7 @@ def gen_cov_mat(  # pylint: disable=too-many-arguments
     one_shot: bool,
     sigma_te_sq: float,
     skip: int = 0,
+    initial: Optional[np.ndarray] = None,
 ):
     """Generate covariance matrix.
 
@@ -345,11 +355,14 @@ def gen_cov_mat(  # pylint: disable=too-many-arguments
         one_shot: Indicator of one-shot sampling.
         sigma_te_sq: Technical variation.
         skip: Number of time slots skipped in subsampling.
+        initial: Initial covariance matrix for single replicate.
 
     Returns: array
         The covariance matrix.
 
     """
+    if initial is not None and (num_rep != 1 or one_shot):
+        raise ValueError("Can only take initial covariance matrix for single replicate multi-shot sampling.")
     num_genes = adj_mat.shape[0]
     num_samples = num_time * num_rep * num_genes
     cov_mat = np.empty((num_samples, num_samples))
@@ -374,6 +387,7 @@ def gen_cov_mat(  # pylint: disable=too-many-arguments
                         ridx1,
                         ridx2,
                         one_shot,
+                        initial,
                     )
     return cov_mat
 
@@ -406,3 +420,23 @@ def erdos_renyi(
     if original_spec_rad:
         return signed_edges / original_spec_rad * spec_rad, spec_rad / original_spec_rad
     return signed_edges, 0
+
+def asymptotic_cov_mat(initial: np.ndarray, adj_mat: np.ndarray, sigma_sq: float, num_iter: int) -> Tuple[np.ndarray, float]:
+    """Gets the asymptotic covariance matrix iteratively.
+
+    Args:
+        initial: Initial covariance matrix.
+        adj_mat: Adjacency matrix.
+        sigma_sq: Total biological variance.
+        num_iter: Number of iterations.
+
+    Returns:
+        Limiting covariance matrix and norm of the last difference.
+    """
+    last_cov_mat = initial
+    for i in range(num_iter):
+        new_cov_mat = adj_mat.T.dot(last_cov_mat).dot(adj_mat)+sigma_sq*np.identity(adj_mat.shape[0])
+        if i == num_iter-1:
+            difference = np.linalg.norm(new_cov_mat-last_cov_mat)
+        last_cov_mat = new_cov_mat
+    return last_cov_mat, difference

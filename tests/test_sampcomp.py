@@ -18,7 +18,8 @@ class TestSampComp(unittest.TestCase):
         )
         self.assertEqual(int_bounds, (1503, 4170))
 
-    def test_gen_cov_mat(self):
+    @staticmethod
+    def test_gen_cov_mat():
         """Test sampcomp.gen_cov_mat."""
         network_ht = sampcomp.NetworkHypothesisTesting()
         cov_mat = sampcomp.gen_cov_mat(
@@ -30,13 +31,9 @@ class TestSampComp(unittest.TestCase):
             network_ht.one_shot,
             network_ht.sigma_te_sq,
         )
-        self.assertIsNone(
-            np.testing.assert_array_equal(
-                cov_mat,
-                np.array(
-                    [[3, 0, 0, 0.1], [0, 3, 0, 0], [0, 0, 3, 0], [0.1, 0, 0, 3.02],]
-                ),
-            )
+        np.testing.assert_array_equal(
+            cov_mat,
+            np.array([[3, 0, 0, 0.1], [0, 3, 0, 0], [0, 0, 3, 0], [0.1, 0, 0, 3.02]]),
         )
 
     def test_bhatta_coeff(self):
@@ -63,22 +60,21 @@ class TestSampComp(unittest.TestCase):
         )
         self.assertAlmostEqual(correct_rho, sampcomp.bhatta_coeff(cov_mat_0, cov_mat_1))
 
-    def test_erdos_renyi(self):
+    @staticmethod
+    def test_erdos_renyi():
         """Test sampcomp.erdos_renyi."""
         np.random.seed(0)
-        self.assertIsNone(
-            np.testing.assert_almost_equal(
-                sampcomp.erdos_renyi(5, 0.2, 0.5)[0],
-                np.array(
-                    [
-                        [0.0, 0.0, 0.0, 0.0, 0.0],
-                        [0.0, 0.0, 0.0, 0.5, 0.0],
-                        [0.0, 0.0, 0.0, 0.5, -0.5],
-                        [-0.5, -0.5, 0.0, 0.0, 0.0],
-                        [0.5, 0.0, 0.0, 0.0, 0.0],
-                    ]
-                ),
-            )
+        np.testing.assert_almost_equal(
+            sampcomp.erdos_renyi(5, 0.2, 0.5)[0],
+            np.array(
+                [
+                    [0.0, 0.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.5, 0.0],
+                    [0.0, 0.0, 0.0, 0.5, -0.5],
+                    [-0.5, -0.5, 0.0, 0.0, 0.0],
+                    [0.5, 0.0, 0.0, 0.0, 0.0],
+                ]
+            ),
         )
 
     def test_er_sampcomp(self):
@@ -120,25 +116,60 @@ class TestSampComp(unittest.TestCase):
         num_cond = 2
         num_sims = 100
         sim_net.samp_times = samp_time
-        avg_err, avg_err_std = sim_net.sim_er_genie_bhatta_lb(
+        avg_err, _ = sim_net.sim_er_genie_bhatta_lb(
             num_genes, prob_conn, spec_rad, num_sims, num_cond
         )[1]
         self.assertTrue(avg_err <= prob_conn * 1.1)
 
-    def test_sub_samp(self):
+    @staticmethod
+    def test_sub_samp():
         """Test subsampling."""
         adj_mat = np.array([[0, 1], [0, 0]])
         cov_mat = sampcomp.gen_cov_mat(adj_mat, 0, 1, 2, 1, False, 0, 1)
-        cov_mat_target = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 2]])
-        self.assertIsNone(
-            np.testing.assert_array_equal(
-                cov_mat,
-                cov_mat_target
-            )
+        cov_mat_target = np.array(
+            [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 2]]
         )
+        np.testing.assert_array_equal(cov_mat, cov_mat_target)
 
-    def test_small_cov(self):
+    @staticmethod
+    def test_small_cov():
         """Test small covariance matrix generation."""
         adj_mat = np.array([[0, 1], [0, 0]])
         cov_mat = sampcomp.cov_mat_small(adj_mat, 0, 1, 0, 0, 0, 0, 0, False)
-        self.assertIsNone(np.testing.assert_array_equal(cov_mat, np.identity(2)))
+        np.testing.assert_array_equal(cov_mat, np.identity(2))
+
+    @staticmethod
+    def test_initial_dist():
+        """Test covariance matrix generation with initial distribution."""
+        network_ht = sampcomp.NetworkHypothesisTesting()
+        cov_mat = sampcomp.gen_cov_mat(
+            network_ht.hypotheses[0],
+            network_ht.sigma_in_sq,
+            network_ht.sigma_en_sq,
+            network_ht.samp_times,
+            network_ht.num_rep,
+            False,
+            network_ht.sigma_te_sq,
+            initial=np.array([[1, 0.5], [0.5, 1]]),
+        )
+        np.testing.assert_array_equal(
+            cov_mat,
+            np.array(
+                [
+                    [2, 0.5, 0, 0.1],
+                    [0.5, 2, 0, 0.05],
+                    [0, 0, 3, 0],
+                    [0.1, 0.05, 0, 3.01],
+                ]
+            ),
+        )
+
+    def test_stationary_cov_mat(self):
+        """Tests calculating stationary distribution iteratively."""
+        network_ht = sampcomp.NetworkHypothesisTesting()
+        initial = np.identity(2)
+        stat_cov_mat, difference = sampcomp.asymptotic_cov_mat(
+            initial, network_ht.hypotheses[0], 2, 10
+        )
+        np.testing.assert_array_equal(stat_cov_mat, np.array([[2, 0], [0, 2.02]]))
+        self.assertEqual(difference, 0)
