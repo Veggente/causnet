@@ -1,6 +1,6 @@
 """Calculate sample complexity of network reconstruction"""
-import numpy as np
 from typing import Tuple
+import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import rv_discrete
 
@@ -49,7 +49,7 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
             np.log(2 * self.prob_error) / np.log(rho),
         )
 
-    def sim_er_genie_bhatta_lb(
+    def sim_er_genie_bhatta_lb(  # pylint: disable=too-many-arguments, too-many-locals
         self,
         num_genes: int,
         prob_conn: float,
@@ -79,10 +79,10 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
         if num_genes > 1:
             lb_cross_list = []
         if bayes:
-            prior = (1-prob_conn, prob_conn)
+            prior = (1 - prob_conn, prob_conn)
         else:
-            prior = (1/2, 1/2)
-        for i in range(num_sims):
+            prior = (1 / 2, 1 / 2)
+        for _ in range(num_sims):
             er_graph, weight = erdos_renyi(num_genes, prob_conn, spec_rad)
             # Autoregulation.  Genie tells everything except the self-edge (0, 0).
             auto_adj_mat = self.genie_hypotheses(er_graph, (0, 0), weight, spec_rad)
@@ -106,9 +106,7 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
             )
             rho_auto = bhatta_coeff(auto_cov_mat_0, auto_cov_mat_1)
             lb_list.append(
-                self.lower_bound_on_error_prob(
-                    rho_auto, num_cond, prior=prior
-                )
+                self.lower_bound_on_error_prob(rho_auto, num_cond, prior=prior)
             )
             if num_genes > 1:
                 # Cross regulation.
@@ -135,18 +133,15 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
                 )
                 rho_cross = bhatta_coeff(cross_cov_mat_0, cross_cov_mat_1)
                 lb_cross_list.append(
-                    self.lower_bound_on_error_prob(
-                        rho_cross, num_cond, prior=prior
-                    )
+                    self.lower_bound_on_error_prob(rho_cross, num_cond, prior=prior)
                 )
         auto_lb_stat = np.mean(lb_list), np.std(lb_list)
         if num_genes == 1:
             return auto_lb_stat
-        else:
-            cross_lb_stat = np.mean(lb_cross_list), np.std(lb_cross_list)
-            return auto_lb_stat, cross_lb_stat
+        cross_lb_stat = np.mean(lb_cross_list), np.std(lb_cross_list)
+        return auto_lb_stat, cross_lb_stat
 
-    def genie_hypotheses(
+    def genie_hypotheses(  # pylint: disable=no-self-use
         self, graph: np.ndarray, pos: Tuple[int, int], weight: float, spec_rad: float
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Generate genie-aided hypotheses.
@@ -179,7 +174,7 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
             adj_mat_1[pos] = scale * rademacher
         return adj_mat_0, adj_mat_1
 
-    def lower_bound_on_error_prob(
+    def lower_bound_on_error_prob(  # pylint: disable=no-self-use
         self, rho: float, num_cond: int, prior: Tuple[float, float] = (0.5, 0.5)
     ) -> float:
         """Lower bound on average error probability.
@@ -194,12 +189,19 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
         """
         if prior == (0.5, 0.5):
             return 1 / 2 * (1 - np.sqrt(1 - rho ** (2 * num_cond)))
-        else:
-            return prior[0] * prior[1] * rho ** (2 * num_cond)
+        return prior[0] * prior[1] * rho ** (2 * num_cond)
 
 
-def cov_mat_small(
-    adj_mat: np.ndarray, sigma_in_sq: np.ndarray, sigma_en_sq: np.ndarray, sigma_te_sq: np.ndarray, tidx1: int, tidx2: int, ridx1: int, ridx2: int, one_shot: bool
+def cov_mat_small(  # pylint: disable=too-many-arguments
+    adj_mat: np.ndarray,
+    sigma_in_sq: np.ndarray,
+    sigma_en_sq: np.ndarray,
+    sigma_te_sq: np.ndarray,
+    tidx1: int,
+    tidx2: int,
+    ridx1: int,
+    ridx2: int,
+    one_shot: bool,
 ) -> np.ndarray:
     """Calculates small covariance matrix.
 
@@ -223,36 +225,40 @@ def cov_mat_small(
             adj_mat, tidx1 + 1, tidx2 + 1
         ) + sigma_te_sq * np.identity(num_genes)
     elif ridx1 == ridx2 and not one_shot:
-        cov_mat = (sigma_in_sq + sigma_en_sq) * geom_sum_mat(adj_mat, tidx1 + 1, tidx2 + 1)
+        cov_mat = (sigma_in_sq + sigma_en_sq) * geom_sum_mat(
+            adj_mat, tidx1 + 1, tidx2 + 1
+        )
     else:
         cov_mat = sigma_en_sq * geom_sum_mat(adj_mat, tidx1 + 1, tidx2 + 1)
     return cov_mat
 
 
-def geom_sum_mat(a: np.ndarray, k1: int, k2: int, skip: bool = False) -> np.ndarray:
+def geom_sum_mat(
+    matrix: np.ndarray, max_pow_1: int, max_pow_2: int, skip: bool = False
+) -> np.ndarray:
     """Partial sum of the matrix geometric series.
 
     Args:
-        a: A square matrix.
-        k1: Maximum power on the left plus one.
-        k2: Maximum power on the right plus one.
+        matrix: A square matrix.
+        max_pow_1: Maximum power on the left plus one.
+        max_pow_2: Maximum power on the right plus one.
         skip: Skip the first term in the summation.
 
     Returns:
-        sum_{tau = 1}^{k1 wedge k2}(a^T)**(k1-tau)*a**(k2-tau).
+        sum_{tau = 1}^{max_pow_1 wedge max_pow_2}(a^T)**(max_pow_1-tau)*a**(max_pow_2-tau).
     """
-    if not k1 or not k2:
-        return np.zeros(a.shape)
-    a_power = np.identity(a.shape[0])
-    sum_mat = np.identity(a.shape[0])
-    for i in range(min(k1, k2) - 1):
-        a_power = a.T.dot(a_power).dot(a)
+    if not max_pow_1 or not max_pow_2:
+        return np.zeros(matrix.shape)
+    a_power = np.identity(matrix.shape[0])
+    sum_mat = np.identity(matrix.shape[0])
+    for i in range(min(max_pow_1, max_pow_2) - 1):
+        a_power = matrix.T.dot(a_power).dot(matrix)
         if skip and i == 0:
             continue
         sum_mat += a_power
-    if k1 >= k2:
-        return np.linalg.matrix_power(a.T, k1 - k2).dot(sum_mat)
-    return sum_mat.dot(np.linalg.matrix_power(a, k2 - k1))
+    if max_pow_1 >= max_pow_2:
+        return np.linalg.matrix_power(matrix.T, max_pow_1 - max_pow_2).dot(sum_mat)
+    return sum_mat.dot(np.linalg.matrix_power(matrix, max_pow_2 - max_pow_1))
 
 
 def bhatta_coeff(cov_mat_0, cov_mat_1):
@@ -279,37 +285,42 @@ def plot_bounds(sigma_te_sq=0, saveas="bhatta_bound.eps", start_delta=0.1, diago
     Returns: None
         Save plot to file.
     """
-    ht = NetworkHypothesisTesting()
-    ht.sigma_te_sq = sigma_te_sq
+    hyp_test = NetworkHypothesisTesting()
+    hyp_test.sigma_te_sq = sigma_te_sq
     for i in range(2):
         for j in range(2):
-            ht.hypotheses[i][j, j] = diagonal
-    lb = {one_shot: [] for one_shot in [True, False]}
-    ub = {one_shot: [] for one_shot in [True, False]}
+            hyp_test.hypotheses[i][j, j] = diagonal
+    lower_bounds = {one_shot: [] for one_shot in [True, False]}
+    upper_bounds = {one_shot: [] for one_shot in [True, False]}
     delta_array = np.linspace(start_delta, 0.9, 100)
     for delta in delta_array:
-        ht.hypotheses[0][0, 1] = delta
-        ht.hypotheses[1][0, 1] = -delta
+        hyp_test.hypotheses[0][0, 1] = delta
+        hyp_test.hypotheses[1][0, 1] = -delta
         for one_shot in [True, False]:
-            ht.one_shot = one_shot
-            lower, upper = ht.bhatta_bound()
-            lb[one_shot].append(lower)
-            ub[one_shot].append(upper)
+            hyp_test.one_shot = one_shot
+            lower, upper = hyp_test.bhatta_bound()
+            lower_bounds[one_shot].append(lower)
+            upper_bounds[one_shot].append(upper)
     plt.figure()
     one_shot_str = lambda x: "one-shot" if x else "multi-shot"
     for one_shot in [True, False]:
         plt.plot(
-            delta_array, lb[one_shot], label=one_shot_str(one_shot) + ", lower bound"
+            delta_array,
+            lower_bounds[one_shot],
+            label=one_shot_str(one_shot) + ", lower bound",
         )
         plt.plot(
-            delta_array, ub[one_shot], label=one_shot_str(one_shot) + ", upper bound"
+            delta_array,
+            upper_bounds[one_shot],
+            label=one_shot_str(one_shot) + ", upper bound",
         )
     plt.legend()
     plt.xlabel(r"$\Delta$")
     plt.ylabel("sample complexity")
     plt.savefig(saveas)
 
-def gen_cov_mat(
+
+def gen_cov_mat(  # pylint: disable=too-many-arguments
     adj_mat: np.ndarray,
     sigma_in_sq: float,
     sigma_en_sq: float,
@@ -317,7 +328,7 @@ def gen_cov_mat(
     num_rep: int,
     one_shot: bool,
     sigma_te_sq: float,
-    skip: int = 0
+    skip: int = 0,
 ):
     """Generate covariance matrix.
 
@@ -358,13 +369,14 @@ def gen_cov_mat(
                         sigma_in_sq,
                         sigma_en_sq,
                         sigma_te_sq,
-                        tidx1 * (1+skip),
-                        tidx2 * (1+skip),
+                        tidx1 * (1 + skip),
+                        tidx2 * (1 + skip),
                         ridx1,
                         ridx2,
                         one_shot,
                     )
     return cov_mat
+
 
 def erdos_renyi(
     num_genes: int, prob_conn: float, spec_rad: float = 0.8
