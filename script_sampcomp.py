@@ -111,7 +111,7 @@ def plot_lb_w_network_size(num_sims: int = 20, sigma_te_sq: float = 0) -> None:
     plt.xlabel("network size")
     plt.ylabel("lower bound on average error probability")
     plt.savefig(
-        "/Users/veggente/Documents/workspace/python/sampcomp/pe_v_network_size{}_n{}_t{}.eps".format(
+        "/Users/veggente/Documents/workspace/python/sampcomp/pe_v_network_size{}_n{}_t{}.eps".format(  # pylint: disable=line-too-long
             num_genes_list[-1], num_sims, sim_net.sigma_te_sq
         )
     )

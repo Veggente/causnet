@@ -49,7 +49,7 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
             np.log(2 * self.prob_error) / np.log(rho),
         )
 
-    def sim_er_genie_bhatta_lb(  # pylint: disable=too-many-arguments, too-many-locals
+    def sim_er_genie_bhatta_lb(  # pylint: disable=too-many-arguments, too-many-locals, too-many-branches, too-many-statements
         self,
         num_genes: int,
         prob_conn: float,
@@ -102,7 +102,7 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
             # Autoregulation.  Genie tells everything except the self-edge (0, 0).
             auto_adj_mat = self.genie_hypotheses(er_graph, (0, 0), weight, spec_rad)
             if stationary:
-                initial_auto_0, diff_auto_0 = asymptotic_cov_mat(
+                initial_auto_0, _ = asymptotic_cov_mat(
                     np.identity(num_genes),
                     auto_adj_mat[0],
                     self.sigma_en_sq + self.sigma_in_sq,
@@ -121,7 +121,7 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
                 initial=initial_auto_0,
             )
             if stationary:
-                initial_auto_1, diff_auto_1 = asymptotic_cov_mat(
+                initial_auto_1, _ = asymptotic_cov_mat(
                     np.identity(num_genes),
                     auto_adj_mat[1],
                     self.sigma_en_sq + self.sigma_in_sq,
@@ -151,7 +151,7 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
                     er_graph, (0, 1), weight, spec_rad
                 )
                 if stationary:
-                    initial_cross_0, diff_cross_0 = asymptotic_cov_mat(
+                    initial_cross_0, _ = asymptotic_cov_mat(
                         np.identity(num_genes),
                         cross_adj_mat[0],
                         self.sigma_en_sq + self.sigma_in_sq,
@@ -170,7 +170,7 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
                     initial=initial_cross_0,
                 )
                 if stationary:
-                    initial_cross_1, diff_cross_1 = asymptotic_cov_mat(
+                    initial_cross_1, _ = asymptotic_cov_mat(
                         np.identity(num_genes),
                         cross_adj_mat[1],
                         self.sigma_en_sq + self.sigma_in_sq,
@@ -200,8 +200,7 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
         if num_genes == 1:
             if and_upper:
                 return auto_lb_stat, auto_ub_stat
-            else:
-                return auto_lb_stat
+            return auto_lb_stat
         cross_lb_stat = np.mean(lb_cross_list), np.std(lb_cross_list)
         if and_upper:
             cross_ub_stat = np.mean(ub_cross_list), np.std(ub_cross_list)
