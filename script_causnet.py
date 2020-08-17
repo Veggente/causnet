@@ -12,16 +12,20 @@ plt.style.use("ggplot")
 class Script:
     """Script for CausNet performance evaluation."""
 
-    def recreate_stb_single(  # pylint: disable=no-self-use
-        self, **kwargs
+    @staticmethod
+    def recreate_stb_single(
+        stationary: bool = True, **kwargs
     ) -> Tuple[int, int, int, int]:
         """Recreates a single simulation in Sun–Taylor–Bollt.
 
         Args:
+            stationary: Wait till process is stationary.
             **spec_rad: float
                 Spectral radius.
             **alpha: float
                 Significance level for permutation test.
+            **obs_noise: float
+                Observation noise variance.
 
         Returns:
             Simulation errors.
@@ -31,7 +35,17 @@ class Script:
         adj_mat, _ = sampcomp.erdos_renyi(
             num_genes, 0.05, **filter_kwargs(kwargs, sampcomp.erdos_renyi)
         )
-        data_cell = [gen_lin_gaussian(num_times * 10, adj_mat)[-num_times:, :]]
+        if stationary:
+            total_num_times = num_times * 10
+            sampled_time = slice(-num_times, None)
+        else:
+            total_num_times = num_times
+            sampled_time = slice(None)
+        data_cell = [
+            gen_lin_gaussian(
+                total_num_times, adj_mat, **filter_kwargs(kwargs, gen_lin_gaussian)
+            )[sampled_time, :]
+        ]
         parents, signs = causnet_bslr.ocse(
             data_cell, 100, **filter_kwargs(kwargs, causnet_bslr.ocse)
         )
@@ -49,6 +63,10 @@ class Script:
                 Spectral radius.
             **alpha: float
                 Significance level for permutation test.
+            **obs_noise: float
+                Observation noise variance.
+            **stationary: bool
+                Wait till process is stationary.
 
         Returns:
             False negative ratio and false positive ratio.
@@ -65,12 +83,17 @@ class Script:
             positive += new_p
         return false_neg / positive, false_pos / negative
 
-    def recreate_plot_stb(self, alpha: float, saveas: str) -> None:
+    def recreate_plot_stb(self, saveas: str, **kwargs) -> None:
         """Recreates error plots.
 
         Args:
-            alpha: Significance level for permutation test.
             saveas: Path to save figure to.
+            **alpha: float
+                Significance level for permutation test.
+            **obs_noise: float
+                Observation noise variance.
+            **stationary: bool
+                Wait till process is stationary.
 
         Returns:
             Saves plot.
@@ -78,7 +101,7 @@ class Script:
         spec_rad_arr = np.linspace(0.1, 0.4, 7)
         errors = []
         for spec_rad in spec_rad_arr:
-            errors.append(self.recreate_stb_multiple(spec_rad=spec_rad, alpha=alpha))
+            errors.append(self.recreate_stb_multiple(spec_rad=spec_rad, **kwargs))
         errors = np.array(errors)
         np.savetxt(saveas + ".data", errors)
         plt.figure()
@@ -89,12 +112,15 @@ class Script:
         plt.savefig(saveas)
 
 
-def gen_lin_gaussian(num_times: int, adj_mat: np.ndarray) -> np.ndarray:
+def gen_lin_gaussian(
+    num_times: int, adj_mat: np.ndarray, obs_noise: float = 0.0
+) -> np.ndarray:
     """Generate linear Gaussian dynamics.
 
     Args:
         num_times: Number of times.
         adj_mat: Adjacency matrix.
+        obs_noise: Observation noise variance.
 
     Returns:
         T-by-n array, where T and n are the numbers of times and genes.
@@ -105,7 +131,7 @@ def gen_lin_gaussian(num_times: int, adj_mat: np.ndarray) -> np.ndarray:
     data[0, :] = driving_noise[0, :]
     for i in range(1, num_times):
         data[i, :] = data[i - 1, :].dot(adj_mat) + driving_noise[i, :]
-    return data
+    return data + np.sqrt(obs_noise) * np.random.randn(num_times, num_genes)
 
 
 def get_errors(decision: np.ndarray, truth: np.ndarray) -> Tuple[int, int, int, int]:

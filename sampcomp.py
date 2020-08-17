@@ -1,5 +1,5 @@
 """Calculate sample complexity of network reconstruction"""
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Union
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import rv_discrete
@@ -57,7 +57,18 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
         num_sims: int,
         num_cond: int,
         bayes: bool = True,
-    ) -> float:
+        stationary: bool = False,
+        and_upper: bool = False,
+    ) -> Union[
+        Tuple[float, float],
+        Tuple[Tuple[float, float], Tuple[float, float]],
+        Tuple[
+            Tuple[float, float],
+            Tuple[float, float],
+            Tuple[float, float],
+            Tuple[float, float],
+        ],
+    ]:
         """Simulate genie-aided Bhattacharyya lower bound.
 
         Simulate ER graphs to get a genie-aided Bhattacharyya lower
@@ -70,14 +81,18 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
             num_sims: Number of simulations.
             num_cond: Number of conditions.
             bayes: Use prob_conn as the Bayesian prior.
+            stationary: Use stationary initial condition.
+            and_upper: Also gives the "upper bounds" based on genie's aid.
 
         Returns:
-            Bhattacharyya lower bound.
-
+            Bhattacharyya lower bound, or lower and upper bounds.
         """
         lb_list = []
+        if and_upper:
+            ub_list = []
         if num_genes > 1:
             lb_cross_list = []
+            ub_cross_list = []
         if bayes:
             prior = (1 - prob_conn, prob_conn)
         else:
@@ -86,6 +101,15 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
             er_graph, weight = erdos_renyi(num_genes, prob_conn, spec_rad)
             # Autoregulation.  Genie tells everything except the self-edge (0, 0).
             auto_adj_mat = self.genie_hypotheses(er_graph, (0, 0), weight, spec_rad)
+            if stationary:
+                initial_auto_0, diff_auto_0 = asymptotic_cov_mat(
+                    np.identity(num_genes),
+                    auto_adj_mat[0],
+                    self.sigma_en_sq + self.sigma_in_sq,
+                    20,
+                )
+            else:
+                initial_auto_0 = None
             auto_cov_mat_0 = gen_cov_mat(
                 auto_adj_mat[0],
                 self.sigma_in_sq,
@@ -94,7 +118,17 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
                 self.num_rep,
                 self.one_shot,
                 self.sigma_te_sq,
+                initial=initial_auto_0,
             )
+            if stationary:
+                initial_auto_1, diff_auto_1 = asymptotic_cov_mat(
+                    np.identity(num_genes),
+                    auto_adj_mat[1],
+                    self.sigma_en_sq + self.sigma_in_sq,
+                    20,
+                )
+            else:
+                initial_auto_1 = None
             auto_cov_mat_1 = gen_cov_mat(
                 auto_adj_mat[1],
                 self.sigma_in_sq,
@@ -103,16 +137,28 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
                 self.num_rep,
                 self.one_shot,
                 self.sigma_te_sq,
+                initial=initial_auto_1,
             )
             rho_auto = bhatta_coeff(auto_cov_mat_0, auto_cov_mat_1)
             lb_list.append(
                 self.lower_bound_on_error_prob(rho_auto, num_cond, prior=prior)
             )
+            if and_upper:
+                ub_list.append(self.upper_bound(rho_auto, num_cond))
             if num_genes > 1:
                 # Cross regulation.
                 cross_adj_mat = self.genie_hypotheses(
                     er_graph, (0, 1), weight, spec_rad
                 )
+                if stationary:
+                    initial_cross_0, diff_cross_0 = asymptotic_cov_mat(
+                        np.identity(num_genes),
+                        cross_adj_mat[0],
+                        self.sigma_en_sq + self.sigma_in_sq,
+                        20,
+                    )
+                else:
+                    initial_cross_0 = None
                 cross_cov_mat_0 = gen_cov_mat(
                     cross_adj_mat[0],
                     self.sigma_in_sq,
@@ -121,7 +167,17 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
                     self.num_rep,
                     self.one_shot,
                     self.sigma_te_sq,
+                    initial=initial_cross_0,
                 )
+                if stationary:
+                    initial_cross_1, diff_cross_1 = asymptotic_cov_mat(
+                        np.identity(num_genes),
+                        cross_adj_mat[1],
+                        self.sigma_en_sq + self.sigma_in_sq,
+                        20,
+                    )
+                else:
+                    initial_cross_1 = None
                 cross_cov_mat_1 = gen_cov_mat(
                     cross_adj_mat[1],
                     self.sigma_in_sq,
@@ -130,16 +186,100 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
                     self.num_rep,
                     self.one_shot,
                     self.sigma_te_sq,
+                    initial=initial_cross_1,
                 )
                 rho_cross = bhatta_coeff(cross_cov_mat_0, cross_cov_mat_1)
                 lb_cross_list.append(
                     self.lower_bound_on_error_prob(rho_cross, num_cond, prior=prior)
                 )
+                if and_upper:
+                    ub_cross_list.append(self.upper_bound(rho_cross, num_cond))
         auto_lb_stat = np.mean(lb_list), np.std(lb_list)
+        if and_upper:
+            auto_ub_stat = np.mean(ub_list), np.std(ub_list)
         if num_genes == 1:
-            return auto_lb_stat
+            if and_upper:
+                return auto_lb_stat, auto_ub_stat
+            else:
+                return auto_lb_stat
         cross_lb_stat = np.mean(lb_cross_list), np.std(lb_cross_list)
+        if and_upper:
+            cross_ub_stat = np.mean(ub_cross_list), np.std(ub_cross_list)
+            return auto_lb_stat, cross_lb_stat, auto_ub_stat, cross_ub_stat
         return auto_lb_stat, cross_lb_stat
+
+    def sim_er_bhatta(  # pylint: disable=too-many-arguments, too-many-locals
+        self,
+        num_genes: int,
+        prob_conn: float,
+        spec_rad: float,
+        num_sims: int,
+        stationary: bool = False,
+        **kwargs,
+    ) -> Tuple[float, float]:
+        """Simulate average Bhattacharyya coefficient for ER graphs.
+
+        Args:
+            num_genes: Number of genes/nodes.
+            prob_conn: Probability of connection.
+            spec_rad: The desired spectral radius.
+            num_sims: Number of simulations.
+            stationary: Use stationary initial condition.
+            **skip: int
+                Number of times to skip for subsampling.
+
+        Returns:
+            Average Bhattacharyya coefficient and its standard deviation.
+
+        """
+        bhatta_list = []
+        for _ in range(num_sims):
+            er_graph, weight = erdos_renyi(num_genes, prob_conn, spec_rad)
+            cross_adj_mat = self.genie_hypotheses(er_graph, (0, 1), weight, spec_rad)
+            if stationary:
+                initial_0, _ = asymptotic_cov_mat(
+                    np.identity(num_genes),
+                    cross_adj_mat[0],
+                    self.sigma_en_sq + self.sigma_in_sq,
+                    20,
+                )
+            else:
+                initial_0 = None
+            cross_cov_mat_0 = gen_cov_mat(
+                cross_adj_mat[0],
+                self.sigma_in_sq,
+                self.sigma_en_sq,
+                self.samp_times,
+                self.num_rep,
+                self.one_shot,
+                self.sigma_te_sq,
+                initial=initial_0,
+                **kwargs,
+            )
+            if stationary:
+                initial_1, _ = asymptotic_cov_mat(
+                    np.identity(num_genes),
+                    cross_adj_mat[1],
+                    self.sigma_en_sq + self.sigma_in_sq,
+                    20,
+                )
+            else:
+                initial_1 = None
+            cross_cov_mat_1 = gen_cov_mat(
+                cross_adj_mat[1],
+                self.sigma_in_sq,
+                self.sigma_en_sq,
+                self.samp_times,
+                self.num_rep,
+                self.one_shot,
+                self.sigma_te_sq,
+                initial=initial_1,
+                **kwargs,
+            )
+            rho_cross = bhatta_coeff(cross_cov_mat_0, cross_cov_mat_1)
+            bhatta_list.append(rho_cross)
+        bhatta_stat = np.mean(bhatta_list), np.std(bhatta_list)
+        return bhatta_stat
 
     def genie_hypotheses(  # pylint: disable=no-self-use
         self, graph: np.ndarray, pos: Tuple[int, int], weight: float, spec_rad: float
@@ -190,6 +330,19 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
         if prior == (0.5, 0.5):
             return 1 / 2 * (1 - np.sqrt(1 - rho ** (2 * num_cond)))
         return prior[0] * prior[1] * rho ** (2 * num_cond)
+
+    @staticmethod
+    def upper_bound(rho: float, num_cond: int) -> float:
+        """Upper bound on half of sum of errors.
+
+        Args:
+            rho: Bhattacharyya coefficient.
+            num_cond: Number of conditions.
+
+        Returns:
+            Upper bound.
+        """
+        return rho ** num_cond / 2
 
 
 def cov_mat_small(  # pylint: disable=too-many-arguments
