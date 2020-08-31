@@ -1,5 +1,6 @@
 """Calculate sample complexity of network reconstruction"""
-from typing import Tuple, Optional, Union
+from typing import Tuple, Optional, Union, List
+import time
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import rv_discrete
@@ -573,7 +574,7 @@ def erdos_renyi(
     )
     signed_edges = vals[signed_edge_dist.rvs(size=(num_genes, num_genes))]
     original_spec_rad = max(abs(np.linalg.eigvals(signed_edges)))
-    if original_spec_rad:
+    if original_spec_rad > 1e-10:
         return signed_edges / original_spec_rad * spec_rad, spec_rad / original_spec_rad
     return signed_edges, 0
 
@@ -601,3 +602,139 @@ def asymptotic_cov_mat(
             difference = np.linalg.norm(new_cov_mat - last_cov_mat)
         last_cov_mat = new_cov_mat
     return last_cov_mat, difference
+
+
+def mip(sigma: np.ndarray, non_parent: int, parents: List[int]) -> float:
+    """Calculates the mutual incoherence parameter.
+
+    Args:
+        sigma: Covariance matrix.
+        non_parent: A non-parent of the target.
+        parents: The parents of the target.
+
+    Returns:
+        Mutual incoherence parameter.
+    """
+    mat_a = sigma[non_parent, parents]
+    if len(parents) > 1:
+        mat_b = np.linalg.inv(sigma[np.ix_(parents, parents)])
+        return np.linalg.norm(mat_a.dot(mat_b), ord=1)
+    mat_b = 1 / sigma[parents, parents]
+    return mat_a * mat_b
+
+
+def mip_er(
+    nodes: int,
+    prob_conn: float,
+    times: int,
+    rand_seed: Union[int, float] = 0,
+    spec_rad: float = 0.8,
+) -> Tuple[float, int, int]:
+    """Calculates the mutual incoherence parameter for an ER graph.
+
+    TODO: Fix the error that the first return value may be 0-dim
+    array.
+
+    TODO: Fix random number generator seed.
+
+    Args:
+        nodes: Number of nodes.
+        prob_conn: Probability of connection.
+        times: Number of sampling times (excluding 0).
+        rand_seed: Random number generator seed.
+        spec_rad: Spectral radius.
+
+    Returns:
+        Mutual incoherence parameter.
+
+    """
+    np.random.seed(int(rand_seed))
+    weight = 0
+    while not weight:
+        graph, weight = erdos_renyi(nodes, prob_conn, spec_rad)
+    max_coh = 0
+    cov_mat = geom_sum_mat(graph, times, times)
+    opt_target = 0
+    opt_non_parent = 0
+    for target in range(nodes):
+        parents = np.nonzero(graph[:, target])[0]
+        for non_parent in range(nodes):
+            if non_parent not in parents:
+                new_coh = mip(cov_mat, non_parent, parents)
+                if new_coh > max_coh:
+                    max_coh = new_coh
+                    opt_target = target
+                    opt_non_parent = non_parent
+    return max_coh, opt_target, opt_non_parent
+
+
+def plot_mip_er(rand_seed: int, spec_rad: float) -> None:
+    """Plots mutual incoherence parameters for ER graphs.
+
+    Args:
+        rand_seed: Random number generator seed.
+        spec_rad: Spectral radius.
+
+    Returns:
+        Saves figure.
+    """
+    mip_list = []
+    max_time = 20
+    for times in range(2, max_time):
+        mip_list.append(mip_er(200, 0.05, times, rand_seed, spec_rad)[0])
+    plt.figure()
+    plt.plot(range(2, max_time), mip_list, "-o")
+    plt.savefig("mip-r{}-s{}.eps".format(rand_seed, spec_rad))
+
+
+def avg_mip_er(times: int, spec_rad: float, sims: int = 10, **kwargs) -> float:
+    """Gets average mutual incoherence parameters for ER graphs.
+
+    Args:
+        times: Number of times.
+        spec_rad: Spectral radius.
+        sims: Number of simulations.
+        **nodes: Number of nodes.
+        **prob_conn: Probability of connection.
+
+    Returns:
+        Mutual incoherence parameter.
+    """
+    mip_list = []
+    for _ in range(sims):
+        mip_list.append(
+            mip_er(times=times, rand_seed=time.time(), spec_rad=spec_rad, **kwargs)[0]
+        )
+    return np.mean(mip_list)
+
+
+def plot_mip_er_w_time_n_spec_rad():
+    """Plots MIP for ER graphs with times and spectral radius."""
+    time_arr = np.arange(2, 11)
+    spec_rad_arr = np.linspace(0.2, 0.8, 4)
+    mip_val = np.empty((len(time_arr), len(spec_rad_arr)))
+    for idx_time, num_times in enumerate(time_arr):
+        for idx_sr, spec_rad in enumerate(spec_rad_arr):
+            mip_val[idx_time, idx_sr] = avg_mip_er(
+                num_times, spec_rad, nodes=200, prob_conn=0.05
+            )
+    np.savetxt("mip.csv", mip_val, delimiter=",")
+
+
+def plot_mip_from_csv():
+    """Plots MIP figure from CSV file."""
+    mip_val = np.loadtxt("mip.csv", delimiter=",")
+    time_arr = np.arange(2, 11)
+    spec_rad_arr = np.linspace(0.2, 0.8, 4)
+    plt.figure()
+    for idx, spec_rad in enumerate(spec_rad_arr):
+        plt.plot(
+            time_arr,
+            mip_val[:, idx],
+            "-o",
+            label="spectral radius = {}".format("{0:0.2f}".format(spec_rad)),
+        )
+    plt.legend(loc="best")
+    plt.xlabel(r"number of times $T$")
+    plt.ylabel("average MIP")
+    plt.savefig("mip-w-time-spec-rad.eps")
