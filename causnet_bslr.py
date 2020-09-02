@@ -332,8 +332,9 @@ def ocse(data_cell, num_perm, alpha=0.05, sparsity=0):
     # The first matrix [:, :, 0] is the predictor matrix and the
     # second matrix [:, :, 1] is the target matrix.
     shifted_data = get_shifted_matrix(data_cell, 1)
-    # Center the predictors to eliminate the residual of the intercept.
-    # TODO: Remove unnecessary standardization.
+    # Center the predictors to eliminate the residual of the
+    # intercept.  Standardization is necessary because the all-one
+    # vector is not used later in the projection.
     phi = normalize(shifted_data)
     num_genes = data_cell[0].shape[1]
     if sparsity > 0:
@@ -341,7 +342,7 @@ def ocse(data_cell, num_perm, alpha=0.05, sparsity=0):
     else:
         num_iterations = num_genes
     # Initialize the list of parents and signs for all the target
-    #genes.
+    # genes.
     parent_list = []
     sign_list = []
     for i in range(num_genes):
