@@ -133,7 +133,7 @@ class TestSampComp(unittest.TestCase):
 
     @staticmethod
     def test_small_cov():
-        """Test small covariance matrix generation."""
+        """Tests small covariance matrix generation."""
         adj_mat = np.array([[0, 1], [0, 0]])
         cov_mat = sampcomp.cov_mat_small(adj_mat, 0, 1, 0, 0, 0, 0, 0, False)
         np.testing.assert_array_equal(cov_mat, np.identity(2))
@@ -173,3 +173,44 @@ class TestSampComp(unittest.TestCase):
         )
         np.testing.assert_array_equal(stat_cov_mat, np.array([[2, 0], [0, 2.02]]))
         self.assertEqual(difference, 0)
+
+    @staticmethod
+    def test_cov_w_stationary_skip():
+        """Tests covariance matrix generation with stationary initial condition and skips."""
+        network_ht = sampcomp.NetworkHypothesisTesting()
+        cov_mats = sampcomp.gen_cov_mat_w_skips(
+            network_ht.hypotheses[0], 2, 2, 0, [0, 1]
+        )
+        correct_cov_mats = [
+            np.array(
+                [
+                    [2, 0, 0, 0.2, 0, 0],
+                    [0, 2.02, 0, 0, 0, 0],
+                    [0, 0, 2, 0, 0, 0.2],
+                    [0.2, 0, 0, 2.02, 0, 0],
+                    [0, 0, 0, 0, 2, 0],
+                    [0, 0, 0.2, 0, 0, 2.02],
+                ]
+            ),
+            np.diag([2, 2.02, 2, 2.02]),
+        ]
+        np.testing.assert_array_equal(cov_mats[0], correct_cov_mats[0])
+        np.testing.assert_array_equal(cov_mats[1], correct_cov_mats[1])
+
+    def test_bhatta_skip(self):
+        """Tests Bhattacharyya coefficient with skipped data."""
+        network_ht = sampcomp.NetworkHypothesisTesting()
+        step_size = 0.02
+        num_genes = 16
+        spec_rad = 0.8
+        er_graph, weight = sampcomp.erdos_renyi(num_genes, 1 / 4, spec_rad)
+        er_graph = er_graph * step_size
+        er_graph += np.identity(num_genes)
+        er_graph_pair = network_ht.genie_hypotheses(er_graph, (0, 1), weight, spec_rad)
+        cov_mats = [
+            sampcomp.gen_cov_mat_w_skips(er_graph_pair[i], 2, 2, 0, [0, 1])
+            for i in range(2)
+        ]
+        rho = sampcomp.bhatta_coeff(cov_mats[0][0], cov_mats[1][0])
+        rho_skip = sampcomp.bhatta_coeff(cov_mats[0][1], cov_mats[1][1])
+        self.assertTrue(rho <= rho_skip)
