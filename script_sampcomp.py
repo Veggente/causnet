@@ -12,7 +12,8 @@ def script_plot_1():
     """Single edge with autoregulation."""
     diagonal = 0.8
     sampcomp.plot_bounds(
-        saveas="bhatta-bound-a{}-s0-d0.1.eps".format(diagonal), diagonal=diagonal,
+        saveas="bhatta-bound-a{}-s0-d0.1.eps".format(diagonal),
+        diagonal=diagonal,
     )
     sampcomp.plot_bounds(
         saveas="bhatta-bound-a{}-s0-d0.5.eps".format(diagonal),
@@ -435,7 +436,10 @@ def bhatta_vs_skipped_step_size(
             bhatta ** (total_time / base_eta / samp_times / (this_skip + 1))
         )
     output_prefix = "/Users/veggente/Data/research/flowering/soybean-rna-seq-data/sampcomp/bhatta_v_skipped_step_unscaled_t{}_n{}_s{}_e{}".format(  # pylint: disable=line-too-long
-        total_time, sims, samp_times, base_eta,
+        total_time,
+        sims,
+        samp_times,
+        base_eta,
     )
     with open(output_prefix + ".data", "w") as f:
         for bhatta in bhatta_fixed_duration:
@@ -453,7 +457,7 @@ def bhatta_monotone(seed: int):
     It is easy to prove the monotonicity using the definition of
     Bhattacharyya coefficient and the Cauchy–Schwarz inequality.
     """
-    _ = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(seed)))
+    _ = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(seed)))  # pylint:disable=no-member
     eig_vals = [0.1 + 0.9 * np.random.rand(2) for _ in range(2)]
     phases = np.random.rand(2) * 2 * np.pi
     eig_vecs = [
@@ -490,7 +494,7 @@ def cont_bhatta(max_power: int):
         Saves figure to file.
     """
     powers = list(range(max_power + 1))
-    bhatta = [sampcomp.bhatta_w_small_step(2 ** (-i), 1, 0) for i in powers]
+    bhatta = [sampcomp.bhatta_w_small_step(2 ** (-i), 1, 0, 0, 0) for i in powers]
     plt.figure()
     plt.plot(powers, bhatta, "-o")
     plt.xlabel(r"$m$")
@@ -502,7 +506,7 @@ def cont_bhatta(max_power: int):
     )
 
 
-def cont_bhatta_w_skips(max_power: int, obs_var: float):
+def cont_bhatta_w_skips(max_power: int, obs_var: float, approx_w: int = 0):
     """Continuous Bhattacharyya coefficient with skips.
 
     Compared to cont_bhatta(), this method is closer to a
@@ -511,6 +515,8 @@ def cont_bhatta_w_skips(max_power: int, obs_var: float):
     Args:
         max_power: Maximum power of (1/2) for the step size.
         obs_var: Observation noise variance level.
+        approx_w: Number of times to approximate with.  0 indicates
+            exact value.
 
     Returns:
         Saves figure to file.
@@ -519,7 +525,9 @@ def cont_bhatta_w_skips(max_power: int, obs_var: float):
     step_size = 2 ** (-max_power)
     powers = list(range(max_power + 1))
     bhatta = [
-        sampcomp.bhatta_w_small_step(step_size, 1, 2 ** (max_power - i) - 1, obs_var)
+        sampcomp.bhatta_w_small_step(
+            step_size, 1, 2 ** (max_power - i) - 1, obs_var, approx_w
+        )
         for i in powers
     ]
     plt.figure()
@@ -527,8 +535,9 @@ def cont_bhatta_w_skips(max_power: int, obs_var: float):
     plt.xlabel(r"$m$")
     plt.ylabel("Bhattacharyya coefficient")
     plt.savefig(
-        "/Users/veggente/Data/research/flowering/soybean-rna-seq-data/sampcomp/bhatta_v_step_w_skips_m{}_o{}.eps".format(  # pylint: disable=line-too-long
+        "/Users/veggente/Data/research/flowering/soybean-rna-seq-data/sampcomp/bhatta_v_step_w_skips_m{}_o{}_a{}.eps".format(  # pylint: disable=line-too-long
             max_power,
             obs_var,
+            approx_w,
         )
     )

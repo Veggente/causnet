@@ -673,7 +673,7 @@ def asymptotic_cov_mat(
 
 
 def bhatta_w_small_step(
-    step_size: float, total_time: float, skip: int, obs_var: float
+    step_size: float, total_time: float, skip: int, obs_var: float, approx_w: int
 ) -> float:
     """Calculates Bhattacharyya coefficient with small step size.
 
@@ -686,10 +686,17 @@ def bhatta_w_small_step(
         total_time: Total time interval.
         skip: Number of skipped samples per sample.
         obs_var: Observation noise variance level.
+        approx_w: Number of times to approximate with.  0 indicates
+            exact value.
 
     Returns:
         Bhattacharyya coefficient.
     """
+    if approx_w:
+        approx_time = step_size * (skip + 1) * approx_w
+        return bhatta_w_small_step(step_size, approx_time, skip, obs_var, 0) ** (
+            total_time / approx_time
+        )
     network_ht = NetworkHypothesisTesting()
     network_ht.hypotheses = [
         np.array([[-1, 1], [0, -1]]),
