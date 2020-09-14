@@ -478,6 +478,8 @@ def bhatta_monotone(seed: int):
     if rho_double > min(rho_single):
         print("Exception found.")
     print(rho_double, rho_single, cov_mat, seed)
+
+
 def cont_bhatta(max_power: int):
     """An approximated continuous Bhattacharyya coefficient.
 
@@ -493,7 +495,11 @@ def cont_bhatta(max_power: int):
     plt.plot(powers, bhatta, "-o")
     plt.xlabel(r"$m$")
     plt.ylabel("Bhattacharyya coefficient")
-    plt.savefig("/Users/veggente/Data/research/flowering/soybean-rna-seq-data/sampcomp/bhatta_v_step_m{}.eps".format(max_power))
+    plt.savefig(
+        "/Users/veggente/Data/research/flowering/soybean-rna-seq-data/sampcomp/bhatta_v_step_m{}.eps".format(  # pylint: disable=line-too-long
+            max_power
+        )
+    )
 
 
 def cont_bhatta_w_skips(max_power: int):
@@ -511,9 +517,16 @@ def cont_bhatta_w_skips(max_power: int):
     """
     step_size = 2 ** (-max_power)
     powers = list(range(max_power + 1))
-    bhatta = [sampcomp.bhatta_w_small_step(step_size, 1, 2 ** (max_power - i) - 1) for i in powers]
+    bhatta = [
+        sampcomp.bhatta_w_small_step(step_size, 1, 2 ** (max_power - i) - 1)
+        for i in powers
+    ]
     plt.figure()
     plt.plot(powers, bhatta, "-o")
     plt.xlabel(r"$m$")
     plt.ylabel("Bhattacharyya coefficient")
-    plt.savefig("/Users/veggente/Data/research/flowering/soybean-rna-seq-data/sampcomp/bhatta_v_step_w_skips_m{}.eps".format(max_power))
+    plt.savefig(
+        "/Users/veggente/Data/research/flowering/soybean-rna-seq-data/sampcomp/bhatta_v_step_w_skips_m{}.eps".format(  # pylint: disable=line-too-long
+            max_power
+        )
+    )
