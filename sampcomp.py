@@ -292,7 +292,11 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
         return bhatta_stat
 
     def genie_hypotheses(  # pylint: disable=no-self-use
-        self, graph: np.ndarray, pos: Tuple[int, int], weight: float, spec_rad: Optional[float]
+        self,
+        graph: np.ndarray,
+        pos: Tuple[int, int],
+        weight: float,
+        spec_rad: Optional[float],
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Generate genie-aided hypotheses.
 
@@ -668,7 +672,9 @@ def asymptotic_cov_mat(
     return last_cov_mat, difference
 
 
-def bhatta_w_small_step(step_size: float, total_time: float, skip: int) -> float:
+def bhatta_w_small_step(
+    step_size: float, total_time: float, skip: int, obs_var: float
+) -> float:
     """Calculates Bhattacharyya coefficient with small step size.
 
     Samples are at times [eta, 2 * eta, 3 * eta, ..., int(T / eta) *
@@ -679,12 +685,16 @@ def bhatta_w_small_step(step_size: float, total_time: float, skip: int) -> float
         step_size: Step size.
         total_time: Total time interval.
         skip: Number of skipped samples per sample.
+        obs_var: Observation noise variance level.
 
     Returns:
         Bhattacharyya coefficient.
     """
     network_ht = NetworkHypothesisTesting()
-    network_ht.hypotheses = [np.array([[-1, 1], [0, -1]]), np.array([[-1, -1], [0, -1]])]
+    network_ht.hypotheses = [
+        np.array([[-1, 1], [0, -1]]),
+        np.array([[-1, -1], [0, -1]]),
+    ]
     num_genes = 2
     projector_mat = [
         np.identity(num_genes) + step_size * hypo for hypo in network_ht.hypotheses
@@ -707,4 +717,9 @@ def bhatta_w_small_step(step_size: float, total_time: float, skip: int) -> float
         )
         for idx, this_mat in enumerate(projector_mat)
     ]
+    if obs_var:
+        cov_mat = [
+            this_mat + obs_var / step_size * np.identity(this_mat.shape[0])
+            for this_mat in cov_mat
+        ]
     return bhatta_coeff(*cov_mat)

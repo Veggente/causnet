@@ -490,7 +490,7 @@ def cont_bhatta(max_power: int):
         Saves figure to file.
     """
     powers = list(range(max_power + 1))
-    bhatta = [sampcomp.bhatta_w_small_step(2 ** (-i), 1) for i in powers]
+    bhatta = [sampcomp.bhatta_w_small_step(2 ** (-i), 1, 0) for i in powers]
     plt.figure()
     plt.plot(powers, bhatta, "-o")
     plt.xlabel(r"$m$")
@@ -502,7 +502,7 @@ def cont_bhatta(max_power: int):
     )
 
 
-def cont_bhatta_w_skips(max_power: int):
+def cont_bhatta_w_skips(max_power: int, obs_var: float):
     """Continuous Bhattacharyya coefficient with skips.
 
     Compared to cont_bhatta(), this method is closer to a
@@ -510,6 +510,7 @@ def cont_bhatta_w_skips(max_power: int):
 
     Args:
         max_power: Maximum power of (1/2) for the step size.
+        obs_var: Observation noise variance level.
 
     Returns:
         Saves figure to file.
@@ -518,7 +519,7 @@ def cont_bhatta_w_skips(max_power: int):
     step_size = 2 ** (-max_power)
     powers = list(range(max_power + 1))
     bhatta = [
-        sampcomp.bhatta_w_small_step(step_size, 1, 2 ** (max_power - i) - 1)
+        sampcomp.bhatta_w_small_step(step_size, 1, 2 ** (max_power - i) - 1, obs_var)
         for i in powers
     ]
     plt.figure()
@@ -526,7 +527,8 @@ def cont_bhatta_w_skips(max_power: int):
     plt.xlabel(r"$m$")
     plt.ylabel("Bhattacharyya coefficient")
     plt.savefig(
-        "/Users/veggente/Data/research/flowering/soybean-rna-seq-data/sampcomp/bhatta_v_step_w_skips_m{}.eps".format(  # pylint: disable=line-too-long
-            max_power
+        "/Users/veggente/Data/research/flowering/soybean-rna-seq-data/sampcomp/bhatta_v_step_w_skips_m{}_o{}.eps".format(  # pylint: disable=line-too-long
+            max_power,
+            obs_var,
         )
     )
