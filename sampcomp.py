@@ -673,7 +673,12 @@ def asymptotic_cov_mat(
 
 
 def bhatta_w_small_step(
-    step_size: float, total_time: float, skip: int, obs_var: float, approx_w: int
+    step_size: float,
+    total_time: float,
+    skip: int,
+    obs_var: float,
+    approx_w: int,
+    hypotheses: Optional[List[np.ndarray]] = None,
 ) -> float:
     """Calculates Bhattacharyya coefficient with small step size.
 
@@ -688,6 +693,7 @@ def bhatta_w_small_step(
         obs_var: Observation noise variance level.
         approx_w: Number of times to approximate with.  0 indicates
             exact value.
+        hypotheses: Network hypotheses for the continuous-time model.
 
     Returns:
         Bhattacharyya coefficient.
@@ -697,15 +703,13 @@ def bhatta_w_small_step(
         return bhatta_w_small_step(step_size, approx_time, skip, obs_var, 0) ** (
             total_time / approx_time
         )
-    network_ht = NetworkHypothesisTesting()
-    network_ht.hypotheses = [
-        np.array([[-1, 1], [0, -1]]),
-        np.array([[-1, -1], [0, -1]]),
-    ]
+    if hypotheses is None:
+        hypotheses = [
+            np.array([[-1, 1], [0, -1]]),
+            np.array([[-1, -1], [0, -1]]),
+        ]
     num_genes = 2
-    projector_mat = [
-        np.identity(num_genes) + step_size * hypo for hypo in network_ht.hypotheses
-    ]
+    projector_mat = [np.identity(num_genes) + step_size * hypo for hypo in hypotheses]
     stationary = [
         asymptotic_cov_mat(np.identity(num_genes), this_mat, step_size, 20)[0]
         for this_mat in projector_mat

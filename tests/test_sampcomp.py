@@ -214,3 +214,24 @@ class TestSampComp(unittest.TestCase):
         rho = sampcomp.bhatta_coeff(cov_mats[0][0], cov_mats[1][0])
         rho_skip = sampcomp.bhatta_coeff(cov_mats[0][1], cov_mats[1][1])
         self.assertTrue(rho <= rho_skip)
+
+    def test_bhatta_stat(self):
+        """Tests BC with stationary initial distribution."""
+        rho = sampcomp.bhatta_w_small_step(0.5, 1, 0, 0, 0)
+        cov1 = np.array(
+            [
+                [2 / 3, 2 / 9, 1 / 3, 4 / 9],
+                [2 / 9, 28 / 27, 1 / 9, 17 / 27],
+                [1 / 3, 1 / 9, 2 / 3, 2 / 9],
+                [4 / 9, 17 / 27, 2 / 9, 28 / 27],
+            ]
+        )
+        cov2 = np.array(
+            [
+                [2 / 3, -2 / 9, 1 / 3, -4 / 9],
+                [-2 / 9, 28 / 27, -1 / 9, 17 / 27],
+                [1 / 3, -1 / 9, 2 / 3, -2 / 9],
+                [-4 / 9, 17 / 27, -2 / 9, 28 / 27],
+            ]
+        )
+        self.assertAlmostEqual(rho, sampcomp.bhatta_coeff(cov1, cov2))

@@ -1,5 +1,5 @@
 """Script for sampcomp."""
-from typing import Union, Tuple
+from typing import Union, Tuple, List
 import numpy as np
 import matplotlib.pyplot as plt
 import sampcomp
@@ -457,7 +457,9 @@ def bhatta_monotone(seed: int):
     It is easy to prove the monotonicity using the definition of
     Bhattacharyya coefficient and the Cauchy–Schwarz inequality.
     """
-    _ = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(seed)))  # pylint:disable=no-member
+    _ = np.random.RandomState(  # pylint:disable=no-member
+        np.random.MT19937(np.random.SeedSequence(seed))
+    )
     eig_vals = [0.1 + 0.9 * np.random.rand(2) for _ in range(2)]
     phases = np.random.rand(2) * 2 * np.pi
     eig_vecs = [
@@ -506,7 +508,7 @@ def cont_bhatta(max_power: int):
     )
 
 
-def cont_bhatta_w_skips(max_power: int, obs_var: float, approx_w: int = 0):
+def cont_bhatta_w_skips(max_power: int, obs_var: List[float], approx_w: int = 0):
     """Continuous Bhattacharyya coefficient with skips.
 
     Compared to cont_bhatta(), this method is closer to a
@@ -524,20 +526,60 @@ def cont_bhatta_w_skips(max_power: int, obs_var: float, approx_w: int = 0):
     """
     step_size = 2 ** (-max_power)
     powers = list(range(max_power + 1))
-    bhatta = [
-        sampcomp.bhatta_w_small_step(
-            step_size, 1, 2 ** (max_power - i) - 1, obs_var, approx_w
-        )
-        for i in powers
-    ]
     plt.figure()
-    plt.plot(powers, bhatta, "-o")
+    for this_var in obs_var:
+        bhatta = [
+            sampcomp.bhatta_w_small_step(
+                step_size, 1, 2 ** (max_power - i) - 1, this_var, approx_w
+            )
+            for i in powers
+        ]
+        plt.plot(powers, bhatta, "-o", label=r"$\sigma_t^2 = ${}".format(this_var))
     plt.xlabel(r"$m$")
     plt.ylabel("Bhattacharyya coefficient")
+    plt.legend(loc="best")
     plt.savefig(
         "/Users/veggente/Data/research/flowering/soybean-rna-seq-data/sampcomp/bhatta_v_step_w_skips_m{}_o{}_a{}.eps".format(  # pylint: disable=line-too-long
             max_power,
             obs_var,
             approx_w,
+        )
+    )
+
+
+def bhatta_samp_rate_fixed_data(
+    num_times: int, samp_power_range: List[int], obs_var: List[float]
+) -> None:
+    """Plots BC against sampling rate with fixed amount of data.
+
+    Args:
+        num_times: Number of sampling times.
+        samp_power_range: Maximum and minimum power for sampling rates.
+        obs_var: Observation noise variance.
+
+    Returns:
+        Saves figure.
+    """
+    step_size = 2 ** (-samp_power_range[0])
+    samp_rates = [2 ** i for i in range(samp_power_range[1], samp_power_range[0] + 1)]
+    plt.figure()
+    for this_var in obs_var:
+        bhatta = [
+            sampcomp.bhatta_w_small_step(
+                step_size,
+                num_times * 2 ** (-i),
+                2 ** (samp_power_range[0] - i) - 1,
+                this_var,
+                0,
+            )
+            for i in range(samp_power_range[1], samp_power_range[0] + 1)
+        ]
+        plt.semilogx(samp_rates, bhatta, "-o", label=r"$\sigma_t^2 = ${}".format(this_var))
+    plt.xlabel("sampling rate")
+    plt.ylabel("Bhattacharyya coefficient")
+    plt.legend(loc="best")
+    plt.savefig(
+        "/Users/veggente/Data/research/flowering/soybean-rna-seq-data/sampcomp/bhatta_v_samp_rate_n{}_m{}_o{}.eps".format(  # pylint: disable=line-too-long
+            num_times, samp_power_range, obs_var
         )
     )
