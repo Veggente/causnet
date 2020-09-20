@@ -1,5 +1,5 @@
 """Script for sampcomp."""
-from typing import Union, Tuple
+from typing import Union, Tuple, List
 import numpy as np
 import matplotlib.pyplot as plt
 import sampcomp
@@ -12,7 +12,8 @@ def script_plot_1():
     """Single edge with autoregulation."""
     diagonal = 0.8
     sampcomp.plot_bounds(
-        saveas="bhatta-bound-a{}-s0-d0.1.eps".format(diagonal), diagonal=diagonal,
+        saveas="bhatta-bound-a{}-s0-d0.1.eps".format(diagonal),
+        diagonal=diagonal,
     )
     sampcomp.plot_bounds(
         saveas="bhatta-bound-a{}-s0-d0.5.eps".format(diagonal),
@@ -350,5 +351,235 @@ def plot_bhatta_w_samp_rate(num_sims: int = 20) -> None:
     plt.savefig(
         "/Users/veggente/Documents/workspace/python/sampcomp/bhatta_v_rate_n{}.eps".format(
             num_sims
+        )
+    )
+
+
+def bhatta_vs_step_size(sims: int):
+    """Computes Bhattacharyya coefficient with varying step sizes.
+
+    Roughly follows the setting in [Bento, Ibrahimi, Montanari 2010].
+
+    Args:
+        sims: Number of simulations.
+
+    Returns:
+        Prints Bhattacharyya coefficients.
+    """
+    sim_net = sampcomp.NetworkHypothesisTesting()
+    sim_net.sigma_in_sq = 0
+    sim_net.sigma_te_sq = 0
+    sim_net.one_shot = False
+    sim_net.samp_times = 10
+    eta_list = np.linspace(0.02, 0.2, 10)
+    bhatta_list = []
+    for eta in eta_list:
+        bhatta_list.append(
+            sim_net.sim_er_bhatta(
+                16, 1 / 4, None, sims, stationary=True, step_size=eta, memory=True
+            )
+        )
+    total_time = 1
+    bhatta_fixed_duration = [
+        bhatta ** (total_time / eta_list[0] / 10) for bhatta, _ in bhatta_list
+    ]
+    with open(
+        "/Users/veggente/Data/workspace/python/sampcomp/bhatta_v_step_unscaled.data",
+        "w",
+    ) as f:
+        for bhatta in bhatta_fixed_duration:
+            f.write(str(bhatta))
+    plt.figure()
+    plt.plot(eta_list, bhatta_fixed_duration, "-o")
+    plt.xlabel(r"$\eta$")
+    plt.ylabel("Bhattacharyya coefficient")
+    plt.savefig(
+        "/Users/veggente/Data/workspace/python/sampcomp/bhatta_v_step_unscaled.eps"
+    )
+
+
+def bhatta_vs_skipped_step_size(
+    sims: int, samp_times: int, total_time: float, base_eta: float
+):
+    """Computes Bhattacharyya coefficient with varying skipped step sizes.
+
+    Follows the setting in [Bento, Ibrahimi, Montanari 2010].
+
+    Args:
+        sims: Number of simulations.
+        samp_times: Number of actual samples for each skip value.
+        total_time: Total time interval.
+        base_eta: Base step size.
+
+    Returns:
+        Prints Bhattacharyya coefficients.
+    """
+    sim_net = sampcomp.NetworkHypothesisTesting()
+    sim_net.sigma_in_sq = 0
+    sim_net.sigma_te_sq = 0
+    sim_net.one_shot = False
+    sim_net.samp_times = samp_times
+    skips = list(range(10))
+    bhatta_fixed_duration = []
+    for this_skip in skips:
+        bhatta = sim_net.sim_er_bhatta(
+            16,
+            1 / 4,
+            None,
+            sims,
+            stationary=True,
+            step_size=base_eta,
+            memory=True,
+            skip=this_skip,
+        )[0]
+        bhatta_fixed_duration.append(
+            bhatta ** (total_time / base_eta / samp_times / (this_skip + 1))
+        )
+    output_prefix = "/Users/veggente/Data/research/flowering/soybean-rna-seq-data/sampcomp/bhatta_v_skipped_step_unscaled_t{}_n{}_s{}_e{}".format(  # pylint: disable=line-too-long
+        total_time,
+        sims,
+        samp_times,
+        base_eta,
+    )
+    with open(output_prefix + ".data", "w") as f:
+        for bhatta in bhatta_fixed_duration:
+            f.write(str(bhatta) + "\n")
+    plt.figure()
+    plt.plot(skips, bhatta_fixed_duration, "-o")
+    plt.xlabel("skips")
+    plt.ylabel("Bhattacharyya coefficient")
+    plt.savefig(output_prefix + ".eps")
+
+
+def bhatta_monotone(seed: int):
+    """Checks if the Bhattacharyya coefficient is monotone with data.
+
+    It is easy to prove the monotonicity using the definition of
+    Bhattacharyya coefficient and the Cauchy–Schwarz inequality.
+    """
+    _ = np.random.RandomState(  # pylint:disable=no-member
+        np.random.MT19937(np.random.SeedSequence(seed))
+    )
+    eig_vals = [0.1 + 0.9 * np.random.rand(2) for _ in range(2)]
+    phases = np.random.rand(2) * 2 * np.pi
+    eig_vecs = [
+        np.array(
+            [
+                [np.sin(phases[i]), np.cos(phases[i])],
+                [-np.cos(phases[i]), np.sin(phases[i])],
+            ]
+        )
+        for i in range(2)
+    ]
+    cov_mat = [
+        eig_vecs[i].dot(np.diag(eig_vals[i])).dot(eig_vecs[i].T) for i in range(2)
+    ]
+    rho_double = sampcomp.bhatta_coeff(*cov_mat)
+    rho_single = [
+        sampcomp.bhatta_coeff(
+            np.reshape(cov_mat[0][i, i], (1, 1)), np.reshape(cov_mat[1][i, i], (1, 1))
+        )
+        for i in range(2)
+    ]
+    if rho_double > min(rho_single):
+        print("Exception found.")
+    print(rho_double, rho_single, cov_mat, seed)
+
+
+def cont_bhatta(max_power: int):
+    """An approximated continuous Bhattacharyya coefficient.
+
+    Args:
+        max_power: Maximum power of (1/2) for the step size.
+
+    Returns:
+        Saves figure to file.
+    """
+    powers = list(range(max_power + 1))
+    bhatta = [sampcomp.bhatta_w_small_step(2 ** (-i), 1, 0, 0, 0) for i in powers]
+    plt.figure()
+    plt.plot(powers, bhatta, "-o")
+    plt.xlabel(r"$m$")
+    plt.ylabel("Bhattacharyya coefficient")
+    plt.savefig(
+        "/Users/veggente/Data/research/flowering/soybean-rna-seq-data/sampcomp/bhatta_v_step_m{}.eps".format(  # pylint: disable=line-too-long
+            max_power
+        )
+    )
+
+
+def cont_bhatta_w_skips(max_power: int, obs_var: List[float], approx_w: int = 0):
+    """Continuous Bhattacharyya coefficient with skips.
+
+    Compared to cont_bhatta(), this method is closer to a
+    continuous-time BC.
+
+    Args:
+        max_power: Maximum power of (1/2) for the step size.
+        obs_var: Observation noise variance level.
+        approx_w: Number of times to approximate with.  0 indicates
+            exact value.
+
+    Returns:
+        Saves figure to file.
+
+    """
+    step_size = 2 ** (-max_power)
+    powers = list(range(max_power + 1))
+    plt.figure()
+    for this_var in obs_var:
+        bhatta = [
+            sampcomp.bhatta_w_small_step(
+                step_size, 1, 2 ** (max_power - i) - 1, this_var, approx_w
+            )
+            for i in powers
+        ]
+        plt.plot(powers, bhatta, "-o", label=r"$\sigma_t^2 = ${}".format(this_var))
+    plt.xlabel(r"$m$")
+    plt.ylabel("Bhattacharyya coefficient")
+    plt.legend(loc="best")
+    plt.savefig(
+        "/Users/veggente/Data/research/flowering/soybean-rna-seq-data/sampcomp/bhatta_v_step_w_skips_m{}_o{}_a{}.eps".format(  # pylint: disable=line-too-long
+            max_power,
+            obs_var,
+            approx_w,
+        )
+    )
+
+
+def bhatta_samp_rate_fixed_data(
+    num_times: int, samp_power_range: List[int], obs_var: List[float]
+) -> None:
+    """Plots BC against sampling rate with fixed amount of data.
+
+    Args:
+        num_times: Number of sampling times.
+        samp_power_range: Maximum and minimum power for sampling rates.
+        obs_var: Observation noise variance.
+
+    Returns:
+        Saves figure.
+    """
+    step_size = 2 ** (-samp_power_range[0])
+    samp_rates = [2 ** i for i in range(samp_power_range[1], samp_power_range[0] + 1)]
+    plt.figure()
+    for this_var in obs_var:
+        bhatta = [
+            sampcomp.bhatta_w_small_step(
+                step_size,
+                num_times * 2 ** (-i),
+                2 ** (samp_power_range[0] - i) - 1,
+                this_var,
+                0,
+            )
+            for i in range(samp_power_range[1], samp_power_range[0] + 1)
+        ]
+        plt.semilogx(samp_rates, bhatta, "-o", label=r"$\sigma_t^2 = ${}".format(this_var))
+    plt.xlabel("sampling rate")
+    plt.ylabel("Bhattacharyya coefficient")
+    plt.legend(loc="best")
+    plt.savefig(
+        "/Users/veggente/Data/research/flowering/soybean-rna-seq-data/sampcomp/bhatta_v_samp_rate_n{}_m{}_o{}.eps".format(  # pylint: disable=line-too-long
+            num_times, samp_power_range, obs_var
         )
     )

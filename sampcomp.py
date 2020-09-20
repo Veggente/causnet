@@ -1,5 +1,5 @@
 """Calculate sample complexity of network reconstruction"""
-from typing import Tuple, Optional, Union
+from typing import Tuple, Optional, Union, List
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import rv_discrete
@@ -11,6 +11,10 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
     """Network hypothesis testing."""
 
     def __init__(self):
+        """Initialization.
+
+        TODO: Set variables.
+        """
         self.hypotheses = [
             np.array([[0, 0.1], [0, 0]]),
             np.array([[0, -0.1], [0, 0]]),
@@ -211,9 +215,11 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
         self,
         num_genes: int,
         prob_conn: float,
-        spec_rad: float,
+        spec_rad: Optional[float],
         num_sims: int,
         stationary: bool = False,
+        step_size: float = 1,
+        memory: bool = False,
         **kwargs,
     ) -> Tuple[float, float]:
         """Simulate average Bhattacharyya coefficient for ER graphs.
@@ -221,33 +227,38 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
         Args:
             num_genes: Number of genes/nodes.
             prob_conn: Probability of connection.
-            spec_rad: The desired spectral radius.
+            spec_rad: The desired spectral radius.  If None, do not
+                rescale the network.
             num_sims: Number of simulations.
             stationary: Use stationary initial condition.
+            step_size: Step size of the discrete-time system.
+            memory: Add an identity matrix to the network matrix.
             **skip: int
                 Number of times to skip for subsampling.
 
         Returns:
             Average Bhattacharyya coefficient and its standard deviation.
-
         """
         bhatta_list = []
         for _ in range(num_sims):
             er_graph, weight = erdos_renyi(num_genes, prob_conn, spec_rad)
+            er_graph = er_graph * step_size
+            if memory:
+                er_graph = er_graph + np.identity(num_genes)
             cross_adj_mat = self.genie_hypotheses(er_graph, (0, 1), weight, spec_rad)
             if stationary:
                 initial_0, _ = asymptotic_cov_mat(
                     np.identity(num_genes),
                     cross_adj_mat[0],
-                    self.sigma_en_sq + self.sigma_in_sq,
+                    (self.sigma_en_sq + self.sigma_in_sq) * step_size,
                     20,
                 )
             else:
                 initial_0 = None
             cross_cov_mat_0 = gen_cov_mat(
                 cross_adj_mat[0],
-                self.sigma_in_sq,
-                self.sigma_en_sq,
+                self.sigma_in_sq * step_size,
+                self.sigma_en_sq * step_size,
                 self.samp_times,
                 self.num_rep,
                 self.one_shot,
@@ -259,15 +270,15 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
                 initial_1, _ = asymptotic_cov_mat(
                     np.identity(num_genes),
                     cross_adj_mat[1],
-                    self.sigma_en_sq + self.sigma_in_sq,
+                    (self.sigma_en_sq + self.sigma_in_sq) * step_size,
                     20,
                 )
             else:
                 initial_1 = None
             cross_cov_mat_1 = gen_cov_mat(
                 cross_adj_mat[1],
-                self.sigma_in_sq,
-                self.sigma_en_sq,
+                self.sigma_in_sq * step_size,
+                self.sigma_en_sq * step_size,
                 self.samp_times,
                 self.num_rep,
                 self.one_shot,
@@ -281,7 +292,11 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
         return bhatta_stat
 
     def genie_hypotheses(  # pylint: disable=no-self-use
-        self, graph: np.ndarray, pos: Tuple[int, int], weight: float, spec_rad: float
+        self,
+        graph: np.ndarray,
+        pos: Tuple[int, int],
+        weight: float,
+        spec_rad: Optional[float],
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Generate genie-aided hypotheses.
 
@@ -307,14 +322,17 @@ class NetworkHypothesisTesting:  # pylint: disable=too-many-instance-attributes
         else:
             if weight:
                 scale = weight
-            else:
+            elif spec_rad:
                 scale = spec_rad
+            else:
+                scale = 1
             rademacher = np.random.binomial(1, 0.5) * 2 - 1
             adj_mat_1[pos] = scale * rademacher
         return adj_mat_0, adj_mat_1
 
-    def lower_bound_on_error_prob(  # pylint: disable=no-self-use
-        self, rho: float, num_cond: int, prior: Tuple[float, float] = (0.5, 0.5)
+    @staticmethod
+    def lower_bound_on_error_prob(
+        rho: float, num_cond: int, prior: Tuple[float, float] = (0.5, 0.5)
     ) -> float:
         """Lower bound on average error probability.
 
@@ -356,7 +374,14 @@ def cov_mat_small(  # pylint: disable=too-many-arguments
     one_shot: bool,
     initial: Optional[np.ndarray] = None,
 ) -> np.ndarray:
-    """Calculates small covariance matrix.
+    """Calculates the small covariance matrix.
+
+    If initial is None, we start with a zero matrix at time 0 and
+    calculates the covariance matrix at time pair (tidx1, tidx2)
+    (i.e., the (tidx1 + 1)st and the (tidx2 + 1)st time points).  If
+    initial is not None, we start with initial as the covariance
+    matrix at time 1 and calculates the covariance matrix at time pair
+    (tidx1, tidx2).
 
     Args:
         adj_mat: Adjacency matrix.
@@ -493,10 +518,10 @@ def gen_cov_mat(  # pylint: disable=too-many-arguments, too-many-locals
     sigma_te_sq: float,
     skip: int = 0,
     initial: Optional[np.ndarray] = None,
-):
-    """Generate covariance matrix.
+) -> Union[np.ndarray, List[np.ndarray]]:
+    """Generates covariance matrix.
 
-    Generate covariance matrix for the observations of possibly
+    Generates covariance matrix for the observations of possibly
     multiple genes under Gaussian linear model for a single condition.
     The initial condition (before time 0) is zero.
 
@@ -511,9 +536,8 @@ def gen_cov_mat(  # pylint: disable=too-many-arguments, too-many-locals
         skip: Number of time slots skipped in subsampling.
         initial: Initial covariance matrix for single replicate.
 
-    Returns: array
+    Returns:
         The covariance matrix.
-
     """
     if initial is not None and (num_rep != 1 or one_shot):
         raise ValueError(
@@ -548,8 +572,53 @@ def gen_cov_mat(  # pylint: disable=too-many-arguments, too-many-locals
     return cov_mat
 
 
+def gen_cov_mat_w_skips(
+    adj_mat: np.ndarray,
+    num_tran: int,
+    driv_var: float,
+    obs_var: float,
+    skips: List[int],
+) -> List[np.ndarray]:
+    """Generates covariance matrices for different sampling rates.
+
+    Generates covariance matrices for the observations of a
+    discrete-time linear time-invariant system with Gaussian driving
+    and observation noises with different sampling rates.
+
+    Args:
+        adj_mat: Network adjacency matrix.
+        num_tran: T, the number of transitions at base sampling rate.
+            The observations are at times 0, 1, 2, ..., T.
+        driv_var: Driving noise variance.
+        obs_var: Observation noise variance.
+        skips: Number of time slots skipped in subsampling.
+
+    Returns:
+        The covariance matrices.
+    """
+    num_genes = adj_mat.shape[0]
+    initial = asymptotic_cov_mat(np.identity(num_genes), adj_mat, driv_var, 20)[0]
+    cov_mats = []
+    for this_skip in skips:
+        num_time = int(num_tran / (this_skip + 1)) + 1
+        cov_mats.append(
+            gen_cov_mat(
+                adj_mat,
+                driv_var,
+                0,
+                num_time,
+                1,
+                False,
+                obs_var,
+                skip=this_skip,
+                initial=initial,
+            )
+        )
+    return cov_mats
+
+
 def erdos_renyi(
-    num_genes: int, prob_conn: float, spec_rad: float = 0.8
+    num_genes: int, prob_conn: float, spec_rad: Optional[float] = 0.8
 ) -> Tuple[np.ndarray, float]:
     """Initialize an Erdos Renyi network as in Sun–Taylor–Bollt 2015.
 
@@ -573,9 +642,9 @@ def erdos_renyi(
     )
     signed_edges = vals[signed_edge_dist.rvs(size=(num_genes, num_genes))]
     original_spec_rad = max(abs(np.linalg.eigvals(signed_edges)))
-    if original_spec_rad:
+    if original_spec_rad and spec_rad:
         return signed_edges / original_spec_rad * spec_rad, spec_rad / original_spec_rad
-    return signed_edges, 0
+    return signed_edges, original_spec_rad
 
 
 def asymptotic_cov_mat(
@@ -601,3 +670,67 @@ def asymptotic_cov_mat(
             difference = np.linalg.norm(new_cov_mat - last_cov_mat)
         last_cov_mat = new_cov_mat
     return last_cov_mat, difference
+
+
+def bhatta_w_small_step(
+    step_size: float,
+    total_time: float,
+    skip: int,
+    obs_var: float,
+    approx_w: int,
+    hypotheses: Optional[List[np.ndarray]] = None,
+) -> float:
+    """Calculates Bhattacharyya coefficient with small step size.
+
+    Samples are at times [eta, 2 * eta, 3 * eta, ..., int(T / eta) *
+    eta], where eta and T are the step size and the total time
+    interval.  A BHT of two 2x2 matrices are used.
+
+    Args:
+        step_size: Step size.
+        total_time: Total time interval.
+        skip: Number of skipped samples per sample.
+        obs_var: Observation noise variance level.
+        approx_w: Number of times to approximate with.  0 indicates
+            exact value.
+        hypotheses: Network hypotheses for the continuous-time model.
+
+    Returns:
+        Bhattacharyya coefficient.
+    """
+    if approx_w:
+        approx_time = step_size * (skip + 1) * approx_w
+        return bhatta_w_small_step(step_size, approx_time, skip, obs_var, 0) ** (
+            total_time / approx_time
+        )
+    if hypotheses is None:
+        hypotheses = [
+            np.array([[-1, 1], [0, -1]]),
+            np.array([[-1, -1], [0, -1]]),
+        ]
+    num_genes = 2
+    projector_mat = [np.identity(num_genes) + step_size * hypo for hypo in hypotheses]
+    stationary = [
+        asymptotic_cov_mat(np.identity(num_genes), this_mat, step_size, 20)[0]
+        for this_mat in projector_mat
+    ]
+    cov_mat = [
+        gen_cov_mat(
+            this_mat,
+            0,
+            step_size,
+            int(total_time / step_size / (skip + 1)),
+            1,
+            False,
+            0,
+            skip=skip,
+            initial=stationary[idx],
+        )
+        for idx, this_mat in enumerate(projector_mat)
+    ]
+    if obs_var:
+        cov_mat = [
+            this_mat + obs_var / step_size * np.identity(this_mat.shape[0])
+            for this_mat in cov_mat
+        ]
+    return bhatta_coeff(*cov_mat)
