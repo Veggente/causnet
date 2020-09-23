@@ -31,5 +31,5 @@ class TestOCSE(unittest.TestCase):
         """Test error calculator."""
         decision = np.array([[1, 0, -1], [0, 0, 1]])
         truth = np.array([[0, 0, 1], [-1, 0, 0]])
-        error_rates = np.array([1/2, 2/4])
+        error_rates = np.array([1, 2, 2, 4])
         np.testing.assert_array_equal(error_rates, script_causnet.get_errors(decision, truth))

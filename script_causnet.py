@@ -1,10 +1,11 @@
 """Script for CausNet performance evaluation."""
-from typing import Tuple, Dict, Any, Callable
+from typing import Tuple, Dict, Any, Callable, Optional
 import inspect
 import numpy as np
 import matplotlib.pyplot as plt
 import sampcomp
 import causnet_bslr
+from lasso import lasso_grn
 
 plt.style.use("ggplot")
 
@@ -14,12 +15,15 @@ class Script:
 
     @staticmethod
     def recreate_stb_single(
-        stationary: bool = True, **kwargs
+        stationary: bool = True, num_genes: int = 200, num_times: int = 2000, lasso: Optional[float] = None, **kwargs
     ) -> Tuple[int, int, int, int]:
         """Recreates a single simulation in Sun–Taylor–Bollt.
 
         Args:
             stationary: Wait till process is stationary.
+            num_genes: Number of genes.
+            num_times: Number of times.
+            lasso: Also use lasso with l1 regularizer coefficient.
             **spec_rad: float
                 Spectral radius.
             **alpha: float
@@ -30,8 +34,6 @@ class Script:
         Returns:
             Simulation errors.
         """
-        num_genes = 200
-        num_times = 2000
         adj_mat, _ = sampcomp.erdos_renyi(
             num_genes, 0.05, **filter_kwargs(kwargs, sampcomp.erdos_renyi)
         )
@@ -53,12 +55,20 @@ class Script:
         for j in range(num_genes):
             for idx, i in enumerate(parents[j]):
                 full_network[i, j] = signs[j][idx]
+        if lasso is not None:
+            parents_lasso, signs_lasso = lasso_grn(data_cell, lasso)
+            full_network_lasso = np.zeros((num_genes, num_genes))
+            for j in range(num_genes):
+                for idx, i in enumerate(parents_lasso[j]):
+                    full_network_lasso[i, j] = signs_lasso[j][idx]
+            return get_errors(full_network, adj_mat), get_errors(full_network_lasso, adj_mat)
         return get_errors(full_network, adj_mat)
 
-    def recreate_stb_multiple(self, **kwargs) -> Tuple[float, float]:
+    def recreate_stb_multiple(self, lasso: Optional[float] = None, **kwargs) -> Tuple[float, float]:
         """Recreates error estimates in Sun–Taylor–Bollt.
 
         Args:
+            lasso: lasso l1 regularizer coefficient.
             **spec_rad: float
                 Spectral radius.
             **alpha: float
@@ -75,13 +85,31 @@ class Script:
         false_pos = 0
         negative = 0
         positive = 0
+        if lasso is None:
+            for _ in range(20):
+                new_fn, new_p, new_fp, new_n = self.recreate_stb_single(**kwargs)
+                false_neg += new_fn
+                false_pos += new_fp
+                negative += new_n
+                positive += new_p
+            return false_neg / positive, false_pos / negative
+        false_neg_lasso = 0
+        false_pos_lasso = 0
+        negative_lasso = 0
+        positive_lasso = 0
         for _ in range(20):
-            new_fn, new_p, new_fp, new_n = self.recreate_stb_single(**kwargs)
+            res = self.recreate_stb_single(**kwargs, lasso=lasso)
+            new_fn, new_p, new_fp, new_n = res[0]
             false_neg += new_fn
             false_pos += new_fp
             negative += new_n
             positive += new_p
-        return false_neg / positive, false_pos / negative
+            new_fn, new_p, new_fp, new_n = res[1]
+            false_neg_lasso += new_fn
+            false_pos_lasso += new_fp
+            negative_lasso += new_n
+            positive_lasso += new_p
+        return false_neg / positive, false_pos / negative, false_neg_lasso / positive_lasso, false_pos_lasso / negative_lasso
 
     def recreate_plot_stb(self, saveas: str, **kwargs) -> None:
         """Recreates error plots.
