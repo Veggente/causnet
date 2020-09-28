@@ -1,8 +1,10 @@
-"""Test sampcomp."""
+"""Test CausNet."""
 import unittest
 import math
 import numpy as np
 import sampcomp  # pylint: disable=import-error
+import causnet_bslr  # pylint: disable=import-error
+import script_causnet  # pylint: disable=import-error
 
 
 class TestSampComp(unittest.TestCase):
@@ -173,3 +175,41 @@ class TestSampComp(unittest.TestCase):
         )
         np.testing.assert_array_equal(stat_cov_mat, np.array([[2, 0], [0, 2.02]]))
         self.assertEqual(difference, 0)
+
+
+class TestOCSE(unittest.TestCase):
+    """Test oCSE algorithm in causnet_bslr module."""
+
+    @staticmethod
+    def test_ocse_two_genes():
+        """Test oCSE with a two-gene network.
+
+        Succeed with high probability.
+        """
+        adj_mat = np.array([[0.9, -0.5], [0, 0.9]])
+        num_times = 1000
+        num_genes = 2
+        num_perm = 1000
+        data_cell = [np.empty((num_times, 2))]
+        driving_noise = np.random.randn(num_times, 2)
+        data_cell[0][0, :] = driving_noise[0, :]
+        for i in range(1, num_times):
+            data_cell[0][i, :] = (
+                data_cell[0][i - 1, :].dot(adj_mat) + driving_noise[i, :]
+            )
+        parents, signs = causnet_bslr.ocse(data_cell, num_perm)
+        full_network = np.zeros((num_genes, num_genes))
+        for j in range(num_genes):
+            for idx, i in enumerate(parents[j]):
+                full_network[i, j] = signs[j][idx]
+        np.testing.assert_array_equal(full_network, np.sign(adj_mat))
+
+    @staticmethod
+    def test_get_errors():
+        """Test error calculator."""
+        decision = np.array([[1, 0, -1], [0, 0, 1]])
+        truth = np.array([[0, 0, 1], [-1, 0, 0]])
+        error_rates = np.array([1, 2, 2, 4])
+        np.testing.assert_array_equal(
+            error_rates, script_causnet.get_errors(decision, truth)
+        )
