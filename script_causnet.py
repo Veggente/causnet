@@ -1,5 +1,5 @@
 """Script for CausNet performance evaluation."""
-from typing import Tuple, Dict, Any, Callable, Optional
+from typing import Tuple, Dict, Any, Callable, Optional, Union
 import inspect
 import numpy as np
 import matplotlib.pyplot as plt
@@ -14,14 +14,20 @@ class Script:
     """Script for CausNet performance evaluation."""
 
     @staticmethod
-    def recreate_stb_single(
-        stationary: bool = True, num_genes: int = 200, num_times: int = 2000, lasso: Optional[float] = None, **kwargs
-    ) -> Tuple[int, int, int, int]:
+    def recreate_stb_single(  # pylint: disable=too-many-locals
+        stationary: bool = True,
+        num_genes: int = 200,
+        prob_conn: float = 0.05,
+        num_times: int = 2000,
+        lasso: Optional[float] = None,
+        **kwargs
+    ) -> Union[Tuple[int, int, int, int], Tuple[int, int, int, int, int, int, int, int]]:
         """Recreates a single simulation in Sun–Taylor–Bollt.
 
         Args:
             stationary: Wait till process is stationary.
             num_genes: Number of genes.
+            prob_conn: Probability of connection.
             num_times: Number of times.
             lasso: Also use lasso with l1 regularizer coefficient.
             **spec_rad: float
@@ -35,7 +41,7 @@ class Script:
             Simulation errors.
         """
         adj_mat, _ = sampcomp.erdos_renyi(
-            num_genes, 0.05, **filter_kwargs(kwargs, sampcomp.erdos_renyi)
+            num_genes, prob_conn, **filter_kwargs(kwargs, sampcomp.erdos_renyi)
         )
         if stationary:
             total_num_times = num_times * 10
@@ -61,15 +67,24 @@ class Script:
             for j in range(num_genes):
                 for idx, i in enumerate(parents_lasso[j]):
                     full_network_lasso[i, j] = signs_lasso[j][idx]
-            return get_errors(full_network, adj_mat), get_errors(full_network_lasso, adj_mat)
+            return get_errors(full_network, adj_mat), get_errors(
+                full_network_lasso, adj_mat
+            )
         return get_errors(full_network, adj_mat)
 
-    def recreate_stb_multiple(self, lasso: Optional[float] = None, sims: int = 20, **kwargs) -> Tuple[float, float]:
+    def recreate_stb_multiple(self, sims: int = 20, **kwargs) -> Tuple[float, float]:  # pylint: disable=too-many-locals
         """Recreates error estimates in Sun–Taylor–Bollt.
 
         Args:
-            lasso: lasso l1 regularizer coefficient.
-            sim: Number of simulations.
+            sims: Number of simulations.
+            **num_genes: int
+                Number of genes.
+            **prob_conn: float
+                Probability of connection.
+            **num_times: int
+                Number of times.
+            **lasso: float
+                lasso with l1 regularizer coefficient.
             **spec_rad: float
                 Spectral radius.
             **alpha: float
@@ -86,9 +101,9 @@ class Script:
         false_pos = 0
         negative = 0
         positive = 0
-        if lasso is None:
+        if "lasso" not in kwargs or kwargs["lasso"] is None:
             for _ in range(sims):
-                new_fn, new_p, new_fp, new_n = self.recreate_stb_single(**kwargs)
+                new_fn, new_p, new_fp, new_n = self.recreate_stb_single(**kwargs)  # pylint: disable=unbalanced-tuple-unpacking
                 false_neg += new_fn
                 false_pos += new_fp
                 negative += new_n
@@ -99,7 +114,7 @@ class Script:
         negative_lasso = 0
         positive_lasso = 0
         for _ in range(sims):
-            res = self.recreate_stb_single(**kwargs, lasso=lasso)
+            res = self.recreate_stb_single(**kwargs)
             new_fn, new_p, new_fp, new_n = res[0]
             false_neg += new_fn
             false_pos += new_fp
@@ -110,14 +125,23 @@ class Script:
             false_pos_lasso += new_fp
             negative_lasso += new_n
             positive_lasso += new_p
-        return false_neg / positive, false_pos / negative, false_neg_lasso / positive_lasso, false_pos_lasso / negative_lasso
+        return (
+            false_neg / positive,
+            false_pos / negative,
+            false_neg_lasso / positive_lasso,
+            false_pos_lasso / negative_lasso,
+        )
 
-    def recreate_plot_stb(self, saveas: str, lasso: Optional[float] = None, **kwargs) -> None:
+    def recreate_plot_stb(
+        self, saveas: str, spec_rad_range: Tuple[float] = (0.1, 0.4, 7), **kwargs
+    ) -> None:
         """Recreates error plots.
 
         Args:
             saveas: Path to save figure to.
-            lasso: lasso l1 regularizer coefficient.
+            spec_rad_range: Spectral radius range in np.linspace.
+            **lasso: float
+                lasso l1 regularizer coefficient.
             **alpha: float
                 Significance level for permutation test.
             **obs_noise: float
@@ -130,26 +154,37 @@ class Script:
                 Number of times.
             **sims: int
                 Number of simulations.
+            **prob_conn: float
+                Probability of connection.
 
         Returns:
             Saves plot.
         """
-        spec_rad_arr = np.linspace(0.1, 0.4, 7)
+        spec_rad_arr = np.linspace(*spec_rad_range)
         errors = []
         for spec_rad in spec_rad_arr:
-            errors.append(self.recreate_stb_multiple(lasso=lasso, spec_rad=spec_rad, **kwargs))
+            errors.append(self.recreate_stb_multiple(spec_rad=spec_rad, **kwargs))
         errors = np.array(errors)
-        np.savetxt(saveas + ".data", errors)
         plt.figure()
         plt.plot(spec_rad_arr, errors[:, 0], label="False negative ratio of oCSE")
         plt.plot(spec_rad_arr, errors[:, 1], label="False positive ratio of oCSE")
-        if lasso:
-            plt.plot(spec_rad_arr, errors[:, 2], label="False negative ratio of lasso-{}".format(lasso))
-            plt.plot(spec_rad_arr, errors[:, 3], label="False positive ratio of lasso-{}".format(lasso))
+        if "lasso" in kwargs and kwargs["lasso"] is not None:
+            plt.plot(
+                spec_rad_arr,
+                errors[:, 2],
+                label="False negative ratio of lasso-{}".format(kwargs["lasso"]),
+            )
+            plt.plot(
+                spec_rad_arr,
+                errors[:, 3],
+                label="False positive ratio of lasso-{}".format(kwargs["lasso"]),
+            )
         plt.xlabel("spectral radius")
         plt.ylabel("error")
-        plt.legend()
-        plt.savefig(saveas + "{}.eps".format(kwargs))
+        plt.legend(loc="best")
+        kwargs_str = "-".join([key + "_" + str(kwargs[key]) for key in kwargs])
+        np.savetxt(saveas + "-{}.data".format(kwargs_str), errors)
+        plt.savefig(saveas + "-{}.eps".format(kwargs_str))
 
 
 def gen_lin_gaussian(
