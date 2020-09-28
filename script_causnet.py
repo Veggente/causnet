@@ -64,11 +64,12 @@ class Script:
             return get_errors(full_network, adj_mat), get_errors(full_network_lasso, adj_mat)
         return get_errors(full_network, adj_mat)
 
-    def recreate_stb_multiple(self, lasso: Optional[float] = None, **kwargs) -> Tuple[float, float]:
+    def recreate_stb_multiple(self, lasso: Optional[float] = None, sims: int = 20, **kwargs) -> Tuple[float, float]:
         """Recreates error estimates in Sun–Taylor–Bollt.
 
         Args:
             lasso: lasso l1 regularizer coefficient.
+            sim: Number of simulations.
             **spec_rad: float
                 Spectral radius.
             **alpha: float
@@ -86,7 +87,7 @@ class Script:
         negative = 0
         positive = 0
         if lasso is None:
-            for _ in range(20):
+            for _ in range(sims):
                 new_fn, new_p, new_fp, new_n = self.recreate_stb_single(**kwargs)
                 false_neg += new_fn
                 false_pos += new_fp
@@ -97,7 +98,7 @@ class Script:
         false_pos_lasso = 0
         negative_lasso = 0
         positive_lasso = 0
-        for _ in range(20):
+        for _ in range(sims):
             res = self.recreate_stb_single(**kwargs, lasso=lasso)
             new_fn, new_p, new_fp, new_n = res[0]
             false_neg += new_fn
@@ -111,17 +112,24 @@ class Script:
             positive_lasso += new_p
         return false_neg / positive, false_pos / negative, false_neg_lasso / positive_lasso, false_pos_lasso / negative_lasso
 
-    def recreate_plot_stb(self, saveas: str, **kwargs) -> None:
+    def recreate_plot_stb(self, saveas: str, lasso: Optional[float] = None, **kwargs) -> None:
         """Recreates error plots.
 
         Args:
             saveas: Path to save figure to.
+            lasso: lasso l1 regularizer coefficient.
             **alpha: float
                 Significance level for permutation test.
             **obs_noise: float
                 Observation noise variance.
             **stationary: bool
                 Wait till process is stationary.
+            **num_genes: int
+                Number of genes.
+            **num_times: int
+                Number of times.
+            **sims: int
+                Number of simulations.
 
         Returns:
             Saves plot.
@@ -129,15 +137,19 @@ class Script:
         spec_rad_arr = np.linspace(0.1, 0.4, 7)
         errors = []
         for spec_rad in spec_rad_arr:
-            errors.append(self.recreate_stb_multiple(spec_rad=spec_rad, **kwargs))
+            errors.append(self.recreate_stb_multiple(lasso=lasso, spec_rad=spec_rad, **kwargs))
         errors = np.array(errors)
         np.savetxt(saveas + ".data", errors)
         plt.figure()
-        plt.plot(spec_rad_arr, errors[:, 0], label="False negative ratio")
-        plt.plot(spec_rad_arr, errors[:, 1], label="False positive ratio")
+        plt.plot(spec_rad_arr, errors[:, 0], label="False negative ratio of oCSE")
+        plt.plot(spec_rad_arr, errors[:, 1], label="False positive ratio of oCSE")
+        if lasso:
+            plt.plot(spec_rad_arr, errors[:, 2], label="False negative ratio of lasso-{}".format(lasso))
+            plt.plot(spec_rad_arr, errors[:, 3], label="False positive ratio of lasso-{}".format(lasso))
         plt.xlabel("spectral radius")
         plt.ylabel("error")
-        plt.savefig(saveas)
+        plt.legend()
+        plt.savefig(saveas + "{}.eps".format(kwargs))
 
 
 def gen_lin_gaussian(
