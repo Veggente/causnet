@@ -1,6 +1,7 @@
 """Script for CausNet performance evaluation."""
-from typing import Tuple, Dict, Any, Callable, Optional, Union
+from typing import Tuple, Dict, Any, Callable, Optional, List
 import inspect
+import json
 import numpy as np
 import matplotlib.pyplot as plt
 import sampcomp
@@ -14,14 +15,15 @@ class Script:
     """Script for CausNet performance evaluation."""
 
     @staticmethod
-    def recreate_stb_single(  # pylint: disable=too-many-locals
+    def recreate_stb_single(  # pylint: disable=too-many-locals, too-many-arguments
         stationary: bool = True,
         num_genes: int = 200,
         prob_conn: float = 0.05,
         num_times: int = 2000,
-        lasso: Optional[float] = None,
+        lasso: Optional[List[float]] = None,
+        alpha: Optional[List[float]] = None,
         **kwargs
-    ) -> Union[Tuple[int, int, int, int], Tuple[int, int, int, int, int, int, int, int]]:
+    ) -> Dict[str, Dict[float, Dict[str, int]]]:
         """Recreates a single simulation in Sun–Taylor–Bollt.
 
         Args:
@@ -30,15 +32,16 @@ class Script:
             prob_conn: Probability of connection.
             num_times: Number of times.
             lasso: Also use lasso with l1 regularizer coefficient.
+            alpha: Significance level for permutation test.
             **spec_rad: float
                 Spectral radius.
-            **alpha: float
-                Significance level for permutation test.
             **obs_noise: float
                 Observation noise variance.
 
         Returns:
-            Simulation errors.
+            Performance counts.  E.g.,
+                {"ocse": {0.05: {"fn": 10, "pos": 50, "fp": 3, "neg": 50}},
+                 "lasso": {2.0: {"fn": 12, "pos": 50, "fp": 5, "neg": 50}}}
         """
         adj_mat, _ = sampcomp.erdos_renyi(
             num_genes, prob_conn, **filter_kwargs(kwargs, sampcomp.erdos_renyi)
@@ -54,25 +57,45 @@ class Script:
                 total_num_times, adj_mat, **filter_kwargs(kwargs, gen_lin_gaussian)
             )[sampled_time, :]
         ]
-        parents, signs = causnet_bslr.ocse(
-            data_cell, 100, **filter_kwargs(kwargs, causnet_bslr.ocse)
-        )
-        full_network = np.zeros((num_genes, num_genes))
-        for j in range(num_genes):
-            for idx, i in enumerate(parents[j]):
-                full_network[i, j] = signs[j][idx]
+        count = {}
+        if alpha is not None:
+            count["ocse"] = {}
+            for this_alpha in alpha:
+                count["ocse"][this_alpha] = {}
+                parents, signs = causnet_bslr.ocse(
+                    data_cell,
+                    100,
+                    alpha=this_alpha,
+                    **filter_kwargs(kwargs, causnet_bslr.ocse)
+                )
+                full_network = np.zeros((num_genes, num_genes))
+                for j in range(num_genes):
+                    for idx, i in enumerate(parents[j]):
+                        full_network[i, j] = signs[j][idx]
+                fn, pos, fp, neg = get_errors(full_network, adj_mat)  # pylint: disable=invalid-name
+                count["ocse"][this_alpha]["fn"] = fn
+                count["ocse"][this_alpha]["pos"] = pos
+                count["ocse"][this_alpha]["fp"] = fp
+                count["ocse"][this_alpha]["neg"] = neg
         if lasso is not None:
-            parents_lasso, signs_lasso = lasso_grn(data_cell, lasso)
-            full_network_lasso = np.zeros((num_genes, num_genes))
-            for j in range(num_genes):
-                for idx, i in enumerate(parents_lasso[j]):
-                    full_network_lasso[i, j] = signs_lasso[j][idx]
-            return get_errors(full_network, adj_mat), get_errors(
-                full_network_lasso, adj_mat
-            )
-        return get_errors(full_network, adj_mat)
+            count["lasso"] = {}
+            for this_lasso in lasso:
+                count["lasso"][this_lasso] = {}
+                parents, signs = lasso_grn(data_cell, this_lasso)
+                full_network = np.zeros((num_genes, num_genes))
+                for j in range(num_genes):
+                    for idx, i in enumerate(parents[j]):
+                        full_network[i, j] = signs[j][idx]
+                fn, pos, fp, neg = get_errors(full_network, adj_mat)  # pylint: disable=invalid-name
+                count["lasso"][this_lasso]["fn"] = fn
+                count["lasso"][this_lasso]["pos"] = pos
+                count["lasso"][this_lasso]["fp"] = fp
+                count["lasso"][this_lasso]["neg"] = neg
+        return count
 
-    def recreate_stb_multiple(self, sims: int = 20, **kwargs) -> Tuple[float, float]:  # pylint: disable=too-many-locals
+    def recreate_stb_multiple(
+        self, sims: int = 20, **kwargs
+    ) -> Dict[str, Dict[float, Dict[str, float]]]:
         """Recreates error estimates in Sun–Taylor–Bollt.
 
         Args:
@@ -83,11 +106,11 @@ class Script:
                 Probability of connection.
             **num_times: int
                 Number of times.
-            **lasso: float
+            **lasso: Optional[List[float]]
                 lasso with l1 regularizer coefficient.
             **spec_rad: float
                 Spectral radius.
-            **alpha: float
+            **alpha: Optional[List[float]]
                 Significance level for permutation test.
             **obs_noise: float
                 Observation noise variance.
@@ -95,54 +118,38 @@ class Script:
                 Wait till process is stationary.
 
         Returns:
-            False negative ratio and false positive ratio.
+            False negative ratios and false positive ratios.
         """
-        false_neg = 0
-        false_pos = 0
-        negative = 0
-        positive = 0
-        if "lasso" not in kwargs or kwargs["lasso"] is None:
-            for _ in range(sims):
-                new_fn, new_p, new_fp, new_n = self.recreate_stb_single(**kwargs)  # pylint: disable=unbalanced-tuple-unpacking
-                false_neg += new_fn
-                false_pos += new_fp
-                negative += new_n
-                positive += new_p
-            return false_neg / positive, false_pos / negative
-        false_neg_lasso = 0
-        false_pos_lasso = 0
-        negative_lasso = 0
-        positive_lasso = 0
-        for _ in range(sims):
-            res = self.recreate_stb_single(**kwargs)
-            new_fn, new_p, new_fp, new_n = res[0]
-            false_neg += new_fn
-            false_pos += new_fp
-            negative += new_n
-            positive += new_p
-            new_fn, new_p, new_fp, new_n = res[1]
-            false_neg_lasso += new_fn
-            false_pos_lasso += new_fp
-            negative_lasso += new_n
-            positive_lasso += new_p
-        return (
-            false_neg / positive,
-            false_pos / negative,
-            false_neg_lasso / positive_lasso,
-            false_pos_lasso / negative_lasso,
-        )
+        count = self.recreate_stb_single(**kwargs)
+        for _ in range(sims - 1):
+            new_count = self.recreate_stb_single(**kwargs)
+            for alg in count:
+                for param in count[alg]:
+                    for metric in count[alg][param]:
+                        count[alg][param][metric] += new_count[alg][param][metric]
+        res = {}
+        for alg in count:
+            res[alg] = {}
+            for param in count[alg]:
+                res[alg][param] = {
+                    "fnr": count[alg][param]["fn"] / count[alg][param]["pos"],
+                    "fpr": count[alg][param]["fp"] / count[alg][param]["neg"],
+                }
+        return res
 
     def recreate_plot_stb(
-        self, saveas: str, spec_rad_range: Tuple[float] = (0.1, 0.4, 7), **kwargs
+        self, saveas: str, spec_rad_arr: List[float], plot: bool = True, from_file: str = "", **kwargs
     ) -> None:
         """Recreates error plots.
 
         Args:
             saveas: Path to save figure to.
-            spec_rad_range: Spectral radius range in np.linspace.
-            **lasso: float
+            spec_rad_arr: Spectral radius array.
+            plot: Plots the figure.
+            from_file: Load data from file.
+            **lasso: Optional[List[float]]
                 lasso l1 regularizer coefficient.
-            **alpha: float
+            **alpha: Optional[List[float]]
                 Significance level for permutation test.
             **obs_noise: float
                 Observation noise variance.
@@ -158,33 +165,58 @@ class Script:
                 Probability of connection.
 
         Returns:
-            Saves plot.
+            Saves plot and/or data to files.
         """
-        spec_rad_arr = np.linspace(*spec_rad_range)
-        errors = []
-        for spec_rad in spec_rad_arr:
-            errors.append(self.recreate_stb_multiple(spec_rad=spec_rad, **kwargs))
-        errors = np.array(errors)
+        kwargs_str = "-".join(
+            [
+                key + "_" + str(kwargs[key])
+                for key in kwargs
+                if key not in ["lasso", "alpha"]
+            ]
+        )
+        if from_file:
+            with open(from_file) as f:
+                errors = json.load(f)
+        else:
+            errors = {}
+            for spec_rad in spec_rad_arr:
+                errors[spec_rad] = self.recreate_stb_multiple(spec_rad=spec_rad, **kwargs)
+            with open(saveas + "-{}.data".format(kwargs_str), "w") as f:
+                json.dump(errors, f, indent=4)
+        if plot:
+            self.plot_roc(errors, saveas + kwargs_str)
+
+    @staticmethod
+    def plot_roc(
+        errors: Dict[float, Dict[str, Dict[float, Dict[str, float]]]], saveas: str
+    ) -> None:
+        """Plot ROC curves.
+
+        Args:
+            errors: False negative ratios and false positive ratios.
+            saveas: Output prefix.
+
+        Returns:
+            Saves figures.
+        """
         plt.figure()
-        plt.plot(spec_rad_arr, errors[:, 0], label="False negative ratio of oCSE")
-        plt.plot(spec_rad_arr, errors[:, 1], label="False positive ratio of oCSE")
-        if "lasso" in kwargs and kwargs["lasso"] is not None:
-            plt.plot(
-                spec_rad_arr,
-                errors[:, 2],
-                label="False negative ratio of lasso-{}".format(kwargs["lasso"]),
-            )
-            plt.plot(
-                spec_rad_arr,
-                errors[:, 3],
-                label="False positive ratio of lasso-{}".format(kwargs["lasso"]),
-            )
-        plt.xlabel("spectral radius")
-        plt.ylabel("error")
+        for spec_rad in errors:
+            for alg in errors[spec_rad]:
+                tpr = [
+                    1 - errors[spec_rad][alg][param]["fnr"]
+                    for param in errors[spec_rad][alg]
+                ]
+                fpr = [
+                    errors[spec_rad][alg][param]["fpr"]
+                    for param in errors[spec_rad][alg]
+                ]
+                plt.plot(fpr, tpr, "-o", label=alg + r", $\rho = $" + str(spec_rad))
         plt.legend(loc="best")
-        kwargs_str = "-".join([key + "_" + str(kwargs[key]) for key in kwargs])
-        np.savetxt(saveas + "-{}.data".format(kwargs_str), errors)
-        plt.savefig(saveas + "-{}.eps".format(kwargs_str))
+        plt.xlabel("false positive rate")
+        plt.ylabel("true positive rate")
+        plt.xlim(-0.02, 1.02)
+        plt.ylim(-0.02, 1.02)
+        plt.savefig(saveas + ".eps")
 
 
 def gen_lin_gaussian(
@@ -213,9 +245,9 @@ def get_errors(decision: np.ndarray, truth: np.ndarray) -> Tuple[int, int, int, 
     """Get inference errors.
 
     The false negative ratio is defined as
-    <false negative> / <positive>
+    <false negative> / <condition positive>
     and the false positive ratio is defined as
-    <false positive> / <negative>
+    <false positive> / <condition negative>
     according to Sun–Taylor–Bollt.
 
     Args:
@@ -224,7 +256,6 @@ def get_errors(decision: np.ndarray, truth: np.ndarray) -> Tuple[int, int, int, 
 
     Returns:
         False negative, positive, false positive, and negative.
-
     """
     fn_counter = 0
     fp_counter = 0
