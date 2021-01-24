@@ -426,7 +426,7 @@ def geom_sum_mat(
 
 
 def bhatta_coeff(cov_mat_0, cov_mat_1):
-    """Bhattacharyya coefficient"""
+    """Bhattacharyya coefficient."""
     # Use np.linalg.slogdet to avoid overflow.
     logdet = [np.linalg.slogdet(cov_mat)[1] for cov_mat in [cov_mat_0, cov_mat_1]]
     logdet_avg = np.linalg.slogdet((cov_mat_0 + cov_mat_1) / 2)[1]
@@ -568,15 +568,8 @@ def erdos_renyi(
     Returns:
         Adjacency matrix and its scale.
     """
-    vals = np.asarray([-1.0, 0.0, 1.0])
-    signed_edge_dist = rv_discrete(
-        values=(np.arange(3), [prob_conn / 2, 1 - prob_conn, prob_conn / 2])
-    )
-    signed_edges = vals[signed_edge_dist.rvs(size=(num_genes, num_genes))]
-    original_spec_rad = max(abs(np.linalg.eigvals(signed_edges)))
-    if original_spec_rad > 1e-10:
-        return signed_edges / original_spec_rad * spec_rad, spec_rad / original_spec_rad
-    return signed_edges, 0
+    signed_edges = erdos_renyi_ternary(num_genes, prob_conn)
+    return scale_by_spec_rad(signed_edges, spec_rad)
 
 
 def asymptotic_cov_mat(
@@ -738,3 +731,35 @@ def plot_mip_from_csv():
     plt.xlabel(r"number of times $T$")
     plt.ylabel("average MIP")
     plt.savefig("mip-w-time-spec-rad.eps")
+
+
+def erdos_renyi_ternary(num_genes: int, prob_conn: float) -> np.ndarray:
+    """Generate ternary valued ER graph.
+
+    Args:
+        num_genes: Number of genes/nodes.
+        prob_conn: Probability of connection.
+
+    Returns:
+        Adjacency matrix.
+    """
+    signed_edge_dist = rv_discrete(
+        values=([-1, 0, 1], [prob_conn / 2, 1 - prob_conn, prob_conn / 2])
+    )
+    return signed_edge_dist.rvs(size=(num_genes, num_genes))
+
+
+def scale_by_spec_rad(mat: np.ndarray, rho: float = 0.8) -> Tuple[np.ndarray, float]:
+    """Scales matrix by spectral radius.
+
+    Args:
+        mat: Matrix.
+        rho: Desired spectral radius.
+
+    Returns:
+        Scaled matrix and its scale.
+    """
+    original_spec_rad = max(abs(np.linalg.eigvals(mat)))
+    if original_spec_rad > 1e-10:
+        return mat / original_spec_rad * rho, rho / original_spec_rad
+    return mat, 0

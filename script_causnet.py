@@ -2,11 +2,13 @@
 from typing import Tuple, Dict, Any, Callable, Optional, List
 import inspect
 import json
+from itertools import product
 import numpy as np
 import matplotlib.pyplot as plt
 import sampcomp
 import causnet_bslr
 from lasso import lasso_grn
+import network_bc
 
 plt.style.use("ggplot")
 
@@ -15,15 +17,17 @@ class Script:
     """Script for CausNet performance evaluation."""
 
     @staticmethod
-    def recreate_stb_single(  # pylint: disable=too-many-locals, too-many-arguments
+    def recreate_stb_single(  # pylint: disable=too-many-locals, too-many-arguments, too-many-branches
         stationary: bool = True,
         num_genes: int = 200,
         prob_conn: float = 0.05,
         num_times: int = 2000,
         lasso: Optional[List[float]] = None,
         alpha: Optional[List[float]] = None,
+        bhatta: bool = False,
+        spec_rad: float = 0.8,
         **kwargs
-    ) -> Dict[str, Dict[float, Dict[str, int]]]:
+    ) -> Tuple[Dict[str, Dict[float, Dict[str, int]]], Optional[Tuple[float, float]]]:
         """Recreates a single simulation in Sun–Taylor–Bollt.
 
         Args:
@@ -33,19 +37,33 @@ class Script:
             num_times: Number of times.
             lasso: Also use lasso with l1 regularizer coefficient.
             alpha: Significance level for permutation test.
-            **spec_rad: float
-                Spectral radius.
+            bhatta: Calculates Bhattacharyya coefficients.
+            spec_rad: Spectral radius.
             **obs_noise: float
                 Observation noise variance.
 
         Returns:
-            Performance counts.  E.g.,
+            1. Performance counts.  E.g.,
                 {"ocse": {0.05: {"fn": 10, "pos": 50, "fp": 3, "neg": 50}},
                  "lasso": {2.0: {"fn": 12, "pos": 50, "fp": 5, "neg": 50}}}
+            2. Average Bhattacharyya coefficients squared for positive
+                and negative perturbations.
         """
-        adj_mat, _ = sampcomp.erdos_renyi(
-            num_genes, prob_conn, **filter_kwargs(kwargs, sampcomp.erdos_renyi)
-        )
+        adj_mat_ter = sampcomp.erdos_renyi_ternary(num_genes, prob_conn)
+        if bhatta:
+            bc_list = []
+            for i, j in product(range(num_genes), repeat=2):
+                if i <= j:
+                    bc_list.append(
+                        np.array(network_bc.bc_4_perturbation(
+                            adj_mat_ter, (i, j), spec_rad, num_times - 1, **filter_kwargs(kwargs, network_bc.bc_4_perturbation)
+                        ))
+                        ** 2
+                    )
+            avg_bc = np.mean(bc_list, axis=0)
+        else:
+            avg_bc = None
+        adj_mat, _ = sampcomp.scale_by_spec_rad(adj_mat_ter, rho=spec_rad)
         if stationary:
             total_num_times = num_times * 10
             sampled_time = slice(-num_times, None)
@@ -72,7 +90,9 @@ class Script:
                 for j in range(num_genes):
                     for idx, i in enumerate(parents[j]):
                         full_network[i, j] = signs[j][idx]
-                fn, pos, fp, neg = get_errors(full_network, adj_mat)  # pylint: disable=invalid-name
+                fn, pos, fp, neg = get_errors(  # pylint: disable=invalid-name
+                    full_network, adj_mat
+                )
                 count["ocse"][this_alpha]["fn"] = fn
                 count["ocse"][this_alpha]["pos"] = pos
                 count["ocse"][this_alpha]["fp"] = fp
@@ -86,19 +106,22 @@ class Script:
                 for j in range(num_genes):
                     for idx, i in enumerate(parents[j]):
                         full_network[i, j] = signs[j][idx]
-                fn, pos, fp, neg = get_errors(full_network, adj_mat)  # pylint: disable=invalid-name
+                fn, pos, fp, neg = get_errors(  # pylint: disable=invalid-name
+                    full_network, adj_mat
+                )
                 count["lasso"][this_lasso]["fn"] = fn
                 count["lasso"][this_lasso]["pos"] = pos
                 count["lasso"][this_lasso]["fp"] = fp
                 count["lasso"][this_lasso]["neg"] = neg
-        return count
+        return count, avg_bc
 
     def recreate_stb_multiple(
-        self, sims: int = 20, **kwargs
-    ) -> Dict[str, Dict[float, Dict[str, float]]]:
+        self, bhatta: bool, sims: int = 20, **kwargs
+    ) -> Tuple[Dict[str, Dict[float, Dict[str, float]]], Optional[Tuple[float, float]]]:
         """Recreates error estimates in Sun–Taylor–Bollt.
 
         Args:
+            bhatta: Calculates Bhattacharyya coefficients.
             sims: Number of simulations.
             **num_genes: int
                 Number of genes.
@@ -118,15 +141,18 @@ class Script:
                 Wait till process is stationary.
 
         Returns:
-            False negative ratios and false positive ratios.
+            False negative ratios and false positive ratios, and
+            optionally the Bhattacharyya coefficients squared.
         """
-        count = self.recreate_stb_single(**kwargs)
+        count, avg_bc = self.recreate_stb_single(bhatta=bhatta, **kwargs)
+        avg_bc_list = [avg_bc]
         for _ in range(sims - 1):
-            new_count = self.recreate_stb_single(**kwargs)
+            new_count, new_avg_bc = self.recreate_stb_single(bhatta=bhatta, **kwargs)
             for alg in count:
                 for param in count[alg]:
                     for metric in count[alg][param]:
                         count[alg][param][metric] += new_count[alg][param][metric]
+            avg_bc_list.append(new_avg_bc)
         res = {}
         for alg in count:
             res[alg] = {}
@@ -135,10 +161,18 @@ class Script:
                     "fnr": count[alg][param]["fn"] / count[alg][param]["pos"],
                     "fpr": count[alg][param]["fp"] / count[alg][param]["neg"],
                 }
-        return res
+        if bhatta:
+            return res, np.mean(avg_bc_list, axis=0)
+        return res, None
 
-    def recreate_plot_stb(
-        self, saveas: str, spec_rad_arr: List[float], plot: bool = True, from_file: str = "", **kwargs
+    def recreate_plot_stb(  # pylint: disable=too-many-arguments, too-many-branches
+        self,
+        saveas: str,
+        spec_rad_arr: List[float],
+        plot: bool = True,
+        from_file: str = "",
+        bhatta: bool = False,
+        **kwargs
     ) -> None:
         """Recreates error plots.
 
@@ -147,6 +181,7 @@ class Script:
             spec_rad_arr: Spectral radius array.
             plot: Plots the figure.
             from_file: Load data from file.
+            bhatta: Calculates Bhattacharyya coefficients.
             **lasso: Optional[List[float]]
                 lasso l1 regularizer coefficient.
             **alpha: Optional[List[float]]
@@ -176,31 +211,55 @@ class Script:
         )
         if from_file:
             with open(from_file) as f:
-                errors = json.load(f)
+                if bhatta:
+                    errors, bc2_dict = json.load(f)
+                else:
+                    errors = json.load(f)
         else:
             errors = {}
+            if bhatta:
+                bc2_dict = {}
             for spec_rad in spec_rad_arr:
-                errors[spec_rad] = self.recreate_stb_multiple(spec_rad=spec_rad, **kwargs)
+                if bhatta:
+                    errors[spec_rad], bc2_dict[spec_rad] = self.recreate_stb_multiple(
+                        spec_rad=spec_rad, bhatta=bhatta, **kwargs
+                    )
+                else:
+                    errors[spec_rad], _ = self.recreate_stb_multiple(
+                        spec_rad=spec_rad, bhatta=bhatta, **kwargs
+                    )
+            print(bc2_dict)
+            bc2_dict = {key: np.mean(value) for key, value in bc2_dict.items()}
             with open(saveas + "-{}.data".format(kwargs_str), "w") as f:
-                json.dump(errors, f, indent=4)
+                if bhatta:
+                    save_vars = (errors, bc2_dict)
+                else:
+                    save_vars = errors
+                json.dump(save_vars, f, indent=4)
         if plot:
-            self.plot_roc(errors, saveas + kwargs_str)
+            if bhatta:
+                self.plot_roc(errors, saveas + "-" + kwargs_str, bc2_dict)
+            else:
+                self.plot_roc(errors, saveas + "-" + kwargs_str)
 
     @staticmethod
     def plot_roc(
-        errors: Dict[float, Dict[str, Dict[float, Dict[str, float]]]], saveas: str
+        errors: Dict[float, Dict[str, Dict[float, Dict[str, float]]]],
+        saveas: str,
+        bc2_dict: Optional[Dict[float, float]] = None,
     ) -> None:
         """Plot ROC curves.
 
         Args:
             errors: False negative ratios and false positive ratios.
             saveas: Output prefix.
+            bc2_dict: Bhattacharyya coefficient squared.
 
         Returns:
             Saves figures.
         """
         plt.figure()
-        for spec_rad in errors:
+        for idx, spec_rad in enumerate(errors):
             for alg in errors[spec_rad]:
                 tpr = [
                     1 - errors[spec_rad][alg][param]["fnr"]
@@ -210,7 +269,18 @@ class Script:
                     errors[spec_rad][alg][param]["fpr"]
                     for param in errors[spec_rad][alg]
                 ]
-                plt.plot(fpr, tpr, "-o", label=alg + r", $\rho = $" + str(spec_rad))
+                if alg == "ocse":
+                    symbol = "-o"
+                elif alg == "lasso":
+                    symbol = "--x"
+                else:
+                    raise ValueError("Unknown algorithm.")
+                plt.plot(fpr, tpr, symbol, color="C{}".format(idx), label=alg + r", $\rho = $" + str(spec_rad))
+            if bc2_dict:
+                fpr_full = np.linspace(0, 1)
+                bc2_fpr_diff = np.sqrt(bc2_dict[spec_rad]) - np.sqrt(fpr_full)
+                abs_bound = 1 - (bc2_fpr_diff * (bc2_fpr_diff >= 0)) ** 2
+                plt.plot(fpr_full, abs_bound, "-.", color="C{}".format(idx), label=r"BC bound, $\rho = $" + str(spec_rad))
         plt.legend(loc="best")
         plt.xlabel("false positive rate")
         plt.ylabel("true positive rate")
