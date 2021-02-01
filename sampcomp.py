@@ -1,5 +1,6 @@
 """Calculate sample complexity of network reconstruction"""
 from typing import Tuple, Optional, Union, List
+import time
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import rv_discrete
@@ -450,7 +451,7 @@ def geom_sum_mat(
 
 
 def bhatta_coeff(cov_mat_0, cov_mat_1):
-    """Bhattacharyya coefficient"""
+    """Bhattacharyya coefficient."""
     # Use np.linalg.slogdet to avoid overflow.
     logdet = [np.linalg.slogdet(cov_mat)[1] for cov_mat in [cov_mat_0, cov_mat_1]]
     logdet_avg = np.linalg.slogdet((cov_mat_0 + cov_mat_1) / 2)[1]
@@ -636,15 +637,8 @@ def erdos_renyi(
     Returns:
         Adjacency matrix and its scale.
     """
-    vals = np.asarray([-1.0, 0.0, 1.0])
-    signed_edge_dist = rv_discrete(
-        values=(np.arange(3), [prob_conn / 2, 1 - prob_conn, prob_conn / 2])
-    )
-    signed_edges = vals[signed_edge_dist.rvs(size=(num_genes, num_genes))]
-    original_spec_rad = max(abs(np.linalg.eigvals(signed_edges)))
-    if original_spec_rad and spec_rad:
-        return signed_edges / original_spec_rad * spec_rad, spec_rad / original_spec_rad
-    return signed_edges, original_spec_rad
+    signed_edges = erdos_renyi_ternary(num_genes, prob_conn)
+    return scale_by_spec_rad(signed_edges, spec_rad)
 
 
 def asymptotic_cov_mat(
@@ -734,3 +728,171 @@ def bhatta_w_small_step(
             for this_mat in cov_mat
         ]
     return bhatta_coeff(*cov_mat)
+
+
+def mip(sigma: np.ndarray, non_parent: int, parents: List[int]) -> float:
+    """Calculates the mutual incoherence parameter.
+
+    Args:
+        sigma: Covariance matrix.
+        non_parent: A non-parent of the target.
+        parents: The parents of the target.
+
+    Returns:
+        Mutual incoherence parameter.
+    """
+    mat_a = sigma[non_parent, parents]
+    if len(parents) > 1:
+        mat_b = np.linalg.inv(sigma[np.ix_(parents, parents)])
+        return np.linalg.norm(mat_a.dot(mat_b), ord=1)
+    mat_b = 1 / sigma[parents, parents]
+    return mat_a * mat_b
+
+
+def mip_er(
+    nodes: int,
+    prob_conn: float,
+    times: int,
+    rand_seed: Union[int, float] = 0,
+    spec_rad: float = 0.8,
+) -> Tuple[float, int, int]:
+    """Calculates the mutual incoherence parameter for an ER graph.
+
+    TODO: Fix the error that the first return value may be 0-dim
+    array.
+
+    TODO: Fix random number generator seed.
+
+    Args:
+        nodes: Number of nodes.
+        prob_conn: Probability of connection.
+        times: Number of sampling times (excluding 0).
+        rand_seed: Random number generator seed.
+        spec_rad: Spectral radius.
+
+    Returns:
+        Mutual incoherence parameter.
+
+    """
+    np.random.seed(int(rand_seed))
+    weight = 0
+    while not weight:
+        graph, weight = erdos_renyi(nodes, prob_conn, spec_rad)
+    max_coh = 0
+    cov_mat = geom_sum_mat(graph, times, times)
+    opt_target = 0
+    opt_non_parent = 0
+    for target in range(nodes):
+        parents = np.nonzero(graph[:, target])[0]
+        for non_parent in range(nodes):
+            if non_parent not in parents:
+                new_coh = mip(cov_mat, non_parent, parents)
+                if new_coh > max_coh:
+                    max_coh = new_coh
+                    opt_target = target
+                    opt_non_parent = non_parent
+    return max_coh, opt_target, opt_non_parent
+
+
+def plot_mip_er(rand_seed: int, spec_rad: float) -> None:
+    """Plots mutual incoherence parameters for ER graphs.
+
+    Args:
+        rand_seed: Random number generator seed.
+        spec_rad: Spectral radius.
+
+    Returns:
+        Saves figure.
+    """
+    mip_list = []
+    max_time = 20
+    for times in range(2, max_time):
+        mip_list.append(mip_er(200, 0.05, times, rand_seed, spec_rad)[0])
+    plt.figure()
+    plt.plot(range(2, max_time), mip_list, "-o")
+    plt.savefig("mip-r{}-s{}.eps".format(rand_seed, spec_rad))
+
+
+def avg_mip_er(times: int, spec_rad: float, sims: int = 10, **kwargs) -> float:
+    """Gets average mutual incoherence parameters for ER graphs.
+
+    Args:
+        times: Number of times.
+        spec_rad: Spectral radius.
+        sims: Number of simulations.
+        **nodes: Number of nodes.
+        **prob_conn: Probability of connection.
+
+    Returns:
+        Mutual incoherence parameter.
+    """
+    mip_list = []
+    for _ in range(sims):
+        mip_list.append(
+            mip_er(times=times, rand_seed=time.time(), spec_rad=spec_rad, **kwargs)[0]
+        )
+    return np.mean(mip_list)
+
+
+def plot_mip_er_w_time_n_spec_rad():
+    """Plots MIP for ER graphs with times and spectral radius."""
+    time_arr = np.arange(2, 11)
+    spec_rad_arr = np.linspace(0.2, 0.8, 4)
+    mip_val = np.empty((len(time_arr), len(spec_rad_arr)))
+    for idx_time, num_times in enumerate(time_arr):
+        for idx_sr, spec_rad in enumerate(spec_rad_arr):
+            mip_val[idx_time, idx_sr] = avg_mip_er(
+                num_times, spec_rad, nodes=200, prob_conn=0.05
+            )
+    np.savetxt("mip.csv", mip_val, delimiter=",")
+
+
+def plot_mip_from_csv():
+    """Plots MIP figure from CSV file."""
+    mip_val = np.loadtxt("mip.csv", delimiter=",")
+    time_arr = np.arange(2, 11)
+    spec_rad_arr = np.linspace(0.2, 0.8, 4)
+    plt.figure()
+    for idx, spec_rad in enumerate(spec_rad_arr):
+        plt.plot(
+            time_arr,
+            mip_val[:, idx],
+            "-o",
+            label="spectral radius = {}".format("{0:0.2f}".format(spec_rad)),
+        )
+    plt.legend(loc="best")
+    plt.xlabel(r"number of times $T$")
+    plt.ylabel("average MIP")
+    plt.savefig("mip-w-time-spec-rad.eps")
+
+
+def erdos_renyi_ternary(num_genes: int, prob_conn: float) -> np.ndarray:
+    """Generate ternary valued ER graph.
+
+    Args:
+        num_genes: Number of genes/nodes.
+        prob_conn: Probability of connection.
+
+    Returns:
+        Adjacency matrix.
+    """
+    signed_edge_dist = rv_discrete(
+        values=([-1, 0, 1], [prob_conn / 2, 1 - prob_conn, prob_conn / 2])
+    )
+    return signed_edge_dist.rvs(size=(num_genes, num_genes))
+
+
+def scale_by_spec_rad(mat: np.ndarray, rho: float = 0.8) -> Tuple[np.ndarray, float]:
+    """Scales matrix by spectral radius.
+
+    Args:
+        mat: Matrix.
+        rho: Desired spectral radius.
+
+    Returns:
+        Scaled matrix and its scale.
+    """
+    original_spec_rad = max(abs(np.linalg.eigvals(mat)))
+    if original_spec_rad > 1e-10:
+        return mat / original_spec_rad * rho, rho / original_spec_rad
+    return mat, 0

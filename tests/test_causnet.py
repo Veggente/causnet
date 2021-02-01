@@ -1,8 +1,11 @@
-"""Test sampcomp."""
+"""Test CausNet."""
 import unittest
 import math
 import numpy as np
+from sklearn.linear_model import Lasso
 import sampcomp  # pylint: disable=import-error
+import causnet_bslr  # pylint: disable=import-error
+import script_causnet  # pylint: disable=import-error
 
 
 class TestSampComp(unittest.TestCase):
@@ -235,3 +238,144 @@ class TestSampComp(unittest.TestCase):
             ]
         )
         self.assertAlmostEqual(rho, sampcomp.bhatta_coeff(cov1, cov2))
+
+
+class TestOCSE(unittest.TestCase):
+    """Test oCSE algorithm in causnet_bslr module."""
+
+    @staticmethod
+    def test_ocse_two_genes():
+        """Tests oCSE with a two-gene network.
+
+        Succeeds with high probability.
+        """
+        adj_mat = np.array([[0.9, -0.5], [0, 0.9]])
+        num_times = 1000
+        num_genes = 2
+        num_perm = 1000
+        data_cell = [np.empty((num_times, 2))]
+        driving_noise = np.random.randn(num_times, 2)
+        data_cell[0][0, :] = driving_noise[0, :]
+        for i in range(1, num_times):
+            data_cell[0][i, :] = (
+                data_cell[0][i - 1, :].dot(adj_mat) + driving_noise[i, :]
+            )
+        parents, signs = causnet_bslr.ocse(data_cell, num_perm)
+        full_network = np.zeros((num_genes, num_genes))
+        for j in range(num_genes):
+            for idx, i in enumerate(parents[j]):
+                full_network[i, j] = signs[j][idx]
+        np.testing.assert_array_equal(full_network, np.sign(adj_mat))
+
+    @staticmethod
+    def test_get_errors():
+        """Test error calculator."""
+        decision = np.array([[1, 0, -1], [0, 0, 1]])
+        truth = np.array([[0, 0, 1], [-1, 0, 0]])
+        error_rates = np.array([1, 2, 2, 4])
+        np.testing.assert_array_equal(
+            error_rates, script_causnet.get_errors(decision, truth)
+        )
+
+
+class TestBSLR(unittest.TestCase):
+    """Tests BSLR."""
+
+    @unittest.skip("Legacy test.")
+    @staticmethod
+    def test_bslr():
+        """Tests BSLR."""
+        data_cell = [
+            np.array(
+                [
+                    [0.836334, 0.08015632, 0.001396, 0.64343897],
+                    [0.63934881, 0.44191633, 0.70205871, 0.47928562],
+                    [0.01185488, 0.69447034, 0.49794843, 0.73974141],
+                ]
+            ).T,
+            np.array(
+                [
+                    [0.179556, 0.07568321, 0.66753137],
+                    [0.62753963, 0.22615587, 0.03522489],
+                    [0.39816049, 0.42056573, 0.10281385],
+                ]
+            ),
+        ]
+        num_time_lags = 2
+        num_gene = 3
+        matrix_2 = causnet_bslr.get_shifted_matrix(data_cell, num_time_lags)
+        for j in range(num_gene):
+            for i in range(num_time_lags + 1):
+                print("matrix_2[:, {0}, {1}] =".format(j, i), matrix_2[:, j, i])
+        data_normalized = causnet_bslr.standardize_arr(matrix_2)
+        for j in range(num_gene):
+            for i in range(num_time_lags + 1):
+                print(
+                    "data_normalized[:, {0}, {1}] =".format(j, i),
+                    data_normalized[:, j, i],
+                )
+        phi = data_normalized
+        potential_parents = causnet_bslr.compressive_sensing(phi)
+        print(potential_parents)
+        np.random.seed(0)
+        # May use new random seed instead.
+        # _ = np.random.RandomState(0)
+        print("Testing standardize():")
+        data_cell_2 = [np.random.rand(3, 4), np.random.rand(3, 4), np.random.rand(3, 4)]
+        print("Before standardization:\n", data_cell_2)
+        data_cell_2_st = causnet_bslr.standardize(data_cell_2)
+        print("After standardization:\n", data_cell_2_st)
+
+    @staticmethod
+    def test_standardization_simple():
+        """Tests standardization."""
+        data_cell = [
+            np.reshape(np.arange(12), (3, 4)),
+            np.reshape(np.arange(12), (4, 3)).T,
+        ]
+        data_cell_st = causnet_bslr.standardize(data_cell)
+        np.testing.assert_array_almost_equal(
+            data_cell_st,
+            np.sqrt(2)
+            / 2
+            * np.array(
+                [
+                    [[0, -1, -1, -1], [1, 1, -1, -1], [1, 1, 1, 0]],
+                    [[0, 1, 1, 1], [-1, -1, 1, 1], [-1, -1, -1, 0]],
+                ]
+            ),
+        )
+        data_cell_st_2 = causnet_bslr.standardize_arr(np.array(data_cell))
+        np.testing.assert_allclose(data_cell_st, data_cell_st_2)
+
+    @unittest.skip("Should not pass.")
+    @staticmethod
+    def test_standardization():
+        """Tests standardization.
+
+        The time-dependent standardization scales different times in
+        the final sensing matrix differently.
+        """
+        data_cell = [np.random.randn(4, 5) for _ in range(3)]
+        data_cell_st = causnet_bslr.standardize(data_cell)
+        shifted_data_st = causnet_bslr.get_shifted_matrix(data_cell_st, 1)
+        shifted_data = causnet_bslr.get_shifted_matrix(data_cell, 1)
+        phi_st = causnet_bslr.standardize_arr(shifted_data_st)
+        phi = causnet_bslr.standardize_arr(shifted_data)
+        np.testing.assert_array_almost_equal(phi_st, phi)
+
+
+class TestLasso(unittest.TestCase):
+    """Tests lasso."""
+
+    def test_scaling(self):
+        """Tests scaling of lasso."""
+        sensing = np.random.randn(4, 10)
+        target = np.random.randn(4, 1)
+        reg = Lasso()
+        reg.fit(sensing, target)
+        sensing_dup = np.concatenate([sensing for _ in range(10)])
+        target_dup = np.concatenate([target for _ in range(10)])
+        reg_dup = Lasso()
+        reg_dup.fit(sensing_dup, target_dup)
+        np.testing.assert_allclose(reg.coef_, reg_dup.coef_)

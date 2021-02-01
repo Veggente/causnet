@@ -319,17 +319,17 @@ def main(argv):
         # case?
         if not is_perturb:
             if algorithm == 'causnet':
-                caspian_out = ca.caspian(
+                causnet_out = ca.bslr(
                     data_cell, num_time_lags, max_in_degree,
                     significance_level, self_reg, tds
                     )
             elif algorithm == 'ocse':
-                caspian_out = ca.ocse(
+                causnet_out = ca.ocse(
                     data_cell, num_perm, significance_level,
                     max_in_degree
                     )
             elif algorithm == 'sbl':
-                caspian_out = ca.sbl_grn(
+                causnet_out = ca.sbl_grn(
                     data_cell,
                     sparsity_threshold=sparsity_threshold,
                     sigma_eps=epsilon
@@ -340,9 +340,9 @@ def main(argv):
             # TODO: Make returning p-values is compatible with the
             # ocse algorithm.
             if significance_level:
-                parents, signs = caspian_out
+                parents, signs = causnet_out
             else:
-                parents, signs, p_values = caspian_out
+                parents, signs, p_values = causnet_out
             weight = {}
             sign_dict = {}
             for gene, parents_for_gene in enumerate(parents):
@@ -375,17 +375,17 @@ def main(argv):
                         + np.sqrt(data_var[idx_page])*random_matrix
                         )
                 if algorithm == 'causnet':
-                    caspian_out = ca.caspian(
+                    causnet_out = ca.bslr(
                         perturbed_data_cell, num_time_lags, max_in_degree,
                         significance_level, self_reg, tds
                         )
                 elif algorithm == 'ocse':
-                    caspian_out = ca.ocse(
+                    causnet_out = ca.ocse(
                         perturbed_data_cell, num_perm,
                         significance_level, max_in_degree
                         )
                 elif algorithm == 'sbl':
-                    caspian_out = ca.sbl_grn(
+                    causnet_out = ca.sbl_grn(
                         perturbed_data_cell,
                         sparsity_threshold=sparsity_threshold,
                         sigma_eps=epsilon
@@ -393,9 +393,9 @@ def main(argv):
                 # TODO: Make returning p-values is compatible with the
                 # ocse algorithm.
                 if significance_level:
-                    parents, signs = caspian_out
+                    parents, signs = causnet_out
                 else:
-                    parents, signs, p_values = caspian_out
+                    parents, signs, p_values = causnet_out
                 for gene, parents_for_gene in enumerate(parents):
                     for idx_parent, parent in enumerate(parents_for_gene):
                         # TODO: Fix uniform weight for p-value thickness.
@@ -691,7 +691,10 @@ def sample_mean_var(x):
 def extract_data(gene_list, expression_file, photoperiod_set, strain_set,
                  time_point_set, clustering_indicator, f_test,
                  num_replicates):
-    """Extract gene expression data for a list of genes."""
+    """Extract gene expression data for a list of genes.
+
+    OBSOLETE.
+    """
     # The expression dictionary will have 4-tuple keys and list values.  The
     # key is (gene, photoperiod, strain, sample_time) and the value is
     # [replicate 1, replicate 2, replicate 3, ...].
@@ -1382,9 +1385,9 @@ def load_parser(parser_table_file):
     return parser_dict
 
 
-def bslr(parser_dict, exp_df, num_experiments, num_times,
-         num_genes, num_replicates, max_in_degree,
-         significance_level):
+def bslr_avg(parser_dict, exp_df, num_experiments, num_times,
+             num_genes, num_replicates, max_in_degree,
+             significance_level):
     """BSLR with averaging.
 
     Args:
@@ -1413,7 +1416,7 @@ def bslr(parser_dict, exp_df, num_experiments, num_times,
         exp_df, parser_dict, num_experiments, num_times,
         num_genes, num_replicates
         )
-    parents, signs = ca.caspian(
+    parents, signs = ca.bslr(
         data_cell, num_time_lags, max_in_degree,
         significance_level, self_reg, tds
         )
