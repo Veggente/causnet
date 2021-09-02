@@ -112,7 +112,7 @@ def main(argv):
             -v      Virtual time shift: replicate the first times and
                     append them to the end in order to close the loop
                     from the last time to the first times the next
-                    day. Default is one virtual time.
+                    day.
             -F      F-test for one-way ANOVA.
             -x      Normalized gene expression file in CSV format.
             -P      Sample ID parser file.
@@ -203,12 +203,7 @@ def main(argv):
         elif opt == '-g':
             graphml_file = arg
         elif opt == '-v':
-            # The default number of virtual time shifts is 1.
-            # Otherwise specify using an argument.
-            if arg:
-                vts = int(arg)
-            else:
-                vts = 1
+            vts = int(arg)
         elif opt == '-F':
             f_test = True
         elif opt == '-x':
