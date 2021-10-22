@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import sys
 import getopt
 import numpy as np
-import causnet_bslr as ca
 from tqdm import tqdm
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
@@ -16,6 +15,8 @@ import ast
 import math
 import scipy.stats
 import itertools
+
+import causnet_bslr as ca
 
 
 def main(argv):
@@ -111,7 +112,7 @@ def main(argv):
             -v      Virtual time shift: replicate the first times and
                     append them to the end in order to close the loop
                     from the last time to the first times the next
-                    day. Default is one virtual time.
+                    day.
             -F      F-test for one-way ANOVA.
             -x      Normalized gene expression file in CSV format.
             -P      Sample ID parser file.
@@ -202,12 +203,7 @@ def main(argv):
         elif opt == '-g':
             graphml_file = arg
         elif opt == '-v':
-            # The default number of virtual time shifts is 1.
-            # Otherwise specify using an argument.
-            if arg:
-                vts = int(arg)
-            else:
-                vts = 1
+            vts = int(arg)
         elif opt == '-F':
             f_test = True
         elif opt == '-x':
@@ -237,6 +233,8 @@ def main(argv):
     gene_list = read_gene(gene_list_file)
     if not json_in_file:
         parser_dict = load_parser(parser_file)
+        # TODO: Don't need data_var if not doing perturbation
+        # analysis.
         data_cell, data_var = extract_data_new(
             gene_list, expression_file, cond_list, parser_dict
             )
@@ -316,21 +314,30 @@ def main(argv):
         # case?
         if not is_perturb:
             if algorithm == 'causnet':
-                caspian_out = ca.caspian(
+                causnet_out = ca.bslr(
                     data_cell, num_time_lags, max_in_degree,
                     significance_level, self_reg, tds
                     )
             elif algorithm == 'ocse':
-                caspian_out = ca.ocse(
+                causnet_out = ca.ocse(
                     data_cell, num_perm, significance_level,
                     max_in_degree
                     )
+            elif algorithm == 'sbl':
+                causnet_out = ca.sbl_grn(
+                    data_cell,
+                    sparsity_threshold=sparsity_threshold,
+                    sigma_eps=epsilon
+                    )
+            else:
+                print("Unknown algorithm.")
+                return 1
             # TODO: Make returning p-values is compatible with the
             # ocse algorithm.
             if significance_level:
-                parents, signs = caspian_out
+                parents, signs = causnet_out
             else:
-                parents, signs, p_values = caspian_out
+                parents, signs, p_values = causnet_out
             weight = {}
             sign_dict = {}
             for gene, parents_for_gene in enumerate(parents):
@@ -344,7 +351,9 @@ def main(argv):
                         weight[target_id, parent_id] = thickness(
                             p_values[gene][idx_p], 0.05
                             )
-                    sign_dict[target_id, parent_id] = signs[gene][idx_p]
+                    sign_dict[target_id, parent_id] = (
+                        float(signs[gene][idx_p])
+                        )
         else:
             edge_count = {}
             sign_count = {}
@@ -361,17 +370,17 @@ def main(argv):
                         + np.sqrt(data_var[idx_page])*random_matrix
                         )
                 if algorithm == 'causnet':
-                    caspian_out = ca.caspian(
+                    causnet_out = ca.bslr(
                         perturbed_data_cell, num_time_lags, max_in_degree,
                         significance_level, self_reg, tds
                         )
                 elif algorithm == 'ocse':
-                    caspian_out = ca.ocse(
+                    causnet_out = ca.ocse(
                         perturbed_data_cell, num_perm,
                         significance_level, max_in_degree
                         )
                 elif algorithm == 'sbl':
-                    caspian_out = ca.sbl_grn(
+                    causnet_out = ca.sbl_grn(
                         perturbed_data_cell,
                         sparsity_threshold=sparsity_threshold,
                         sigma_eps=epsilon
@@ -379,9 +388,9 @@ def main(argv):
                 # TODO: Make returning p-values is compatible with the
                 # ocse algorithm.
                 if significance_level:
-                    parents, signs = caspian_out
+                    parents, signs = causnet_out
                 else:
-                    parents, signs, p_values = caspian_out
+                    parents, signs, p_values = causnet_out
                 for gene, parents_for_gene in enumerate(parents):
                     for idx_parent, parent in enumerate(parents_for_gene):
                         # TODO: Fix uniform weight for p-value thickness.
@@ -663,7 +672,7 @@ def generate_exp_filename(path, gene_file):
 
 def sample_var(x):
     """Sample variance of a list."""
-    if x:
+    if len(x) > 1:
         return np.var(x)/(1-1/len(x))
     else:
         return 0.0
@@ -677,7 +686,10 @@ def sample_mean_var(x):
 def extract_data(gene_list, expression_file, photoperiod_set, strain_set,
                  time_point_set, clustering_indicator, f_test,
                  num_replicates):
-    """Extract gene expression data for a list of genes."""
+    """Extract gene expression data for a list of genes.
+
+    OBSOLETE.
+    """
     # The expression dictionary will have 4-tuple keys and list values.  The
     # key is (gene, photoperiod, strain, sample_time) and the value is
     # [replicate 1, replicate 2, replicate 3, ...].
@@ -1366,6 +1378,80 @@ def load_parser(parser_table_file):
             words = line.strip().split(',')
             parser_dict[words[0]] = tuple(words[1:])
     return parser_dict
+
+
+def bslr_avg(parser_dict, exp_df, num_experiments, num_times,
+             num_genes, num_replicates, max_in_degree,
+             significance_level):
+    """BSLR with averaging.
+
+    Args:
+        parser_dict: A dictionary.
+            Sample ID parser.
+        exp_df: A dataframe.
+            Gene expression levels with gene IDs as the
+            index and the sample IDs as the column names.
+        num_experiments: Number of experiments.
+        num_times: Number of times.
+        num_genes: Number of genes.
+        num_replicates: Number of replicates.
+        max_in_degree: Maximum in-degree.
+        significance_level: Significance level for Granger
+            causality F-test.
+
+    Returns: array
+        A 2d array of the reconstructed network (sign only).
+    """
+    # Self-regulation in Granger causality inference.
+    self_reg = True
+    num_time_lags = 1
+    # Time-dependent standardization off.
+    tds = False
+    data_cell = average_full_factorial(
+        exp_df, parser_dict, num_experiments, num_times,
+        num_genes, num_replicates
+        )
+    parents, signs = ca.bslr(
+        data_cell, num_time_lags, max_in_degree,
+        significance_level, self_reg, tds
+        )
+    adj_mat = np.zeros((num_genes, num_genes))
+    for gene, parents_for_gene in enumerate(parents):
+        for idx_p, parent in enumerate(parents_for_gene):
+            adj_mat[parent, gene] = signs[gene][idx_p]
+    return adj_mat
+
+
+def average_full_factorial(exp_df, parser_dict, num_experiments,
+                           num_times, num_genes, num_replicates):
+    """Average replicates in a full factorial design.
+
+    Conditions must be str of integers ('0', '1', ..., 'C-1'),
+    and times must be str of integers ('0', '1', ..., 'T-1').
+
+    Args:
+        parser_dict: A dictionary.
+            Sample ID parser.
+        exp_df: A dataframe.
+            Gene expression levels with gene IDs as the index
+            and the sample IDs as the column names.
+        num_experiments: Number of experiments.
+        num_times: Number of times.
+        num_genes: Number of genes.
+        num_replicates: Number of replicates.
+
+    Returns:
+        A 3-d array of the average TPMs.
+            Axis 0: condition.
+            Axis 1: time.
+            Axis 2: gene.
+    """
+    data_cell = np.zeros((num_experiments, num_times, num_genes))
+    for s in parser_dict:
+        condition = int(parser_dict[s][0])
+        time = int(parser_dict[s][1])
+        data_cell[condition, time] += exp_df[s]/num_replicates
+    return data_cell
 
 
 if __name__ == "__main__":

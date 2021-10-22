@@ -81,7 +81,7 @@ CausNet recovers the gene regulatory network from time-series gene expression da
     * Option `-l`: The number of time lags for network inference. The default is 1.
     * Option `-m`: The maximum in-degree ofthe network. The default is 3.
     * Option `-f`: The significance level for edge rejection based on Granger causality. The default is 0.05.
-    * Option `-v`: Virtual time shift: replicate the first times and append them to the end in order to close the loop from the last time to the first time the next day.  The default it 0.
+    * Option `-v`: Virtual time shift: replicate the first times and append them to the end in order to close the loop from the last time to the first time the next day.  The default is 0.
 
 1. Open `grn.xml` with `Cytoscape`.
     1. Install and open `Cytoscape`.

@@ -15,6 +15,10 @@ Functions:
     get_metric: Calculate classification metric.
     hmean: Calculate the harmonic mean.
     integrate_lin: Integration with linear interpolation.
+    get_error_rate: Calculate error rate for ternary decision.
+    get_error_rate_from_file: Calculate error rate for a graph file.
+    get_instability: Calculate instability for two binary weight
+        graph files.
 """
 
 import sys
@@ -55,13 +59,18 @@ def get_sas(decision, prior, self_edge=False):
     """Get sensitivity, accuracy and specificity for a ternary
     classification decision.
 
+    Note the entries must be of float type (not int type) for
+    inserting the NaNs in false self edge case.
+
     Args:
-        decision: A 2-d array with 1, -1 and 0s representing the
+        decision: array
+            A 2-d array with 1.0, -1.0 and 0.0s representing the
             classification decision.
-        prior: A 2-d array with 1, -1 and 0s representing the
+        prior: array
+            A 2-d array with 1.0, -1.0 and 0.0s representing the
             ground truth.
         self_edge: Indicator of whether self-edges are allowed.
-            Default is false; i.e., self-edges in the ground thuth
+            Default is false; i.e., self-edges in the ground truth
             are ignored and not counted toward the sensitivity,
             accuracy or specificity.
 
@@ -346,6 +355,127 @@ def integrate_lin(x, y):
     return np.inner(
         x_finite[1:]-x_finite[:-1], (y_finite[1:]+y_finite[:-1])/2
         )
+
+
+def get_error_rate(decision, prior, self_edge=False):
+    """Get empirical error rate for a ternary
+    classification decision.
+
+    Args:
+        decision: A 2-d array with 1, -1 and 0s representing the
+            classification decision.
+        prior: A 2-d array with 1, -1 and 0s representing the
+            ground truth.
+        self_edge: Indicator of whether self-edges are allowed.
+            Default is false; i.e., self-edges in the ground truth
+            are ignored and not counted toward the sensitivity,
+            accuracy or specificity.
+
+    Returns:
+        Empirical error rate.
+    """
+    prior_flat = np.copy(prior)
+    decision_flat = np.copy(decision)
+    if not self_edge:
+        np.fill_diagonal(prior_flat, np.nan)
+        np.fill_diagonal(decision_flat, np.nan)
+    # Convert 2-d arrays to 1-d arrays.
+    prior_flat = prior_flat[np.isfinite(prior_flat)]
+    decision_flat = decision_flat[np.isfinite(decision_flat)]
+    # True positive.
+    tp = sum(prior_flat*decision_flat > 0)
+    # True negative.
+    tn = sum(np.logical_and(decision_flat == 0, prior_flat == 0))
+    # Total number of elements.
+    num_elem = len(prior_flat)
+    return 1-(tp+tn)/num_elem
+
+
+def get_error_rate_from_file(graphml_file, adj_mat_file,
+                             self_edge=False):
+    """Get error rate from GraphML file.
+
+    Args:
+        graphml_file: A GraphML file of the reconstructed network
+            with weighted directed edges.
+        adj_mat_file: Adjacency matrix of the ground truth.
+        self_edge: Indicator of whether self-edges are allowed.
+            Default is false; i.e., self-edges in the ground thuth
+            are ignored and not counted toward the sensitivity,
+            accuracy or specificity.
+
+    Returns:
+        Error rate.
+    """
+    network = nx.read_graphml(graphml_file)
+    adj_mat = np.loadtxt(adj_mat_file, delimiter=' ')
+    num_genes_in_adj_mat = adj_mat.shape[0]
+    num_genes = len(network.nodes())
+    # Pad the adj matrix of extra genes with zeros.
+    if num_genes > num_genes_in_adj_mat:
+        adj_mat_big = np.zeros((num_genes, num_genes))
+        adj_mat_big[
+            :num_genes_in_adj_mat, :num_genes_in_adj_mat
+            ] = adj_mat
+        adj_mat = adj_mat_big
+    net_sign = nx.adjacency_matrix(
+        network, weight='sign'
+        ).toarray()
+    net_weight = nx.adjacency_matrix(
+        network, weight='weight'
+        ).toarray()
+    # Reconstructed network with signed weight.
+    net_sign_wt = net_sign*net_weight
+    # Ternary network of the ground truth with 1, -1 and 0.
+    gt_tern = np.sign(adj_mat)
+    net_tern = np.array(net_sign_wt, copy=True)
+    net_tern = np.sign(net_tern)
+    error_rate = get_error_rate(net_tern, gt_tern, self_edge)
+    return error_rate
+
+
+def get_instability(graphml_file_1, graphml_file_2,
+                    self_edge=False):
+    """Get instability from two GraphML files.
+
+    The two networks should have binary weights with signs
+    on the edges.
+
+    Args:
+        graphml_file_1: GraphML file 1.
+        graphml_file_2: GraphML file 2.
+        self_edge: Indicator of whether self-edges are allowed.
+            Default is false; i.e., self-edges in the ground thuth
+            are ignored and not counted toward the sensitivity,
+            accuracy or specificity.
+
+    Returns:
+        Instability.
+    """
+    network_1 = nx.read_graphml(graphml_file_1)
+    network_2 = nx.read_graphml(graphml_file_2)
+    num_genes = len(network_1.nodes())
+    net_sign_1 = nx.adjacency_matrix(
+        network_1, weight='sign'
+        ).toarray()
+    net_sign_2 = nx.adjacency_matrix(
+        network_2, weight='sign'
+        ).toarray()
+    net_weight_1 = nx.adjacency_matrix(
+        network_1, weight='weight'
+        ).toarray()
+    net_weight_2 = nx.adjacency_matrix(
+        network_2, weight='weight'
+        ).toarray()
+    # Reconstructed network with signed weight.
+    net_sign_wt_1 = net_sign_1*net_weight_1
+    net_sign_wt_2 = net_sign_2*net_weight_2
+    net_tern_1 = np.array(net_sign_wt_1, copy=True)
+    net_tern_1 = np.sign(net_tern_1)
+    net_tern_2 = np.array(net_sign_wt_2, copy=True)
+    net_tern_2 = np.sign(net_tern_2)
+    instability = get_error_rate(net_tern_1, net_tern_2, self_edge)
+    return instability
 
 
 if __name__ == "__main__":

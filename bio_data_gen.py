@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate biologically plausible RNA-seq data.
+"""Generate gene regulatory network and time series expression data.
 
 Functions:
     main: Generate biologically plausible data.
@@ -12,9 +12,13 @@ from scipy.integrate import odeint
 from scipy.stats import norm
 import pandas as pd
 import argparse
+import os
 
 
 def main(argv):
+    num_times = 6
+    max_in_deg = 3
+    rand_seed = None
     parser = argparse.ArgumentParser()
     parser.add_argument("adjmat", help="adjacency matrix")
     parser.add_argument("exp", help="expression level file")
@@ -38,37 +42,23 @@ def main(argv):
                         help="signal to noise ratio",
                         type=float, default=1)
     parser.add_argument(
-        "--num-experiments", help="number of experiments",
-        type=int, default=10
+        "--gamma",
+        help="fraction of power of condition dependent noise",
+        type=float, default=0
         )
-    parser.add_argument(
-        "--num-replicates",
-        help="number of biological replicates",
-        type=int, default=3
-        )
-    parser.add_argument(
-        "--num-times", help="number of sample times",
-        type=int, default=6
-        )
-    parser.add_argument(
-        "--max-in-deg", help="maximum in-degree",
-        type=int, default=3
-        )
-    parser.add_argument(
-        "--margin", help="edge strength margin",
-        type=float, default=0.5
-        )
-    parser.add_argument(
-        "--rand-seed", help="random number generator seed",
-        type=int, default=None
-        )
-    args = parser.parse_args()
+    parser.add_argument("-m", "--method", choices=['phi', 'glm'],
+                        help="data generation method", default='phi')
+    parser.add_argument("--num-cond", help="number of conditions",
+                        type=int, default=10)
+    parser.add_argument("--num-rep", help="number of replicates",
+                        type=int, default=3)
+    args = parser.parse_args(argv)
     # The regulation coefficients have variance one regardless
     # of the margin.  So the SNR is [CITATION NEEDED]
     # num_times*max_in_degree/36/sigma**2.
-    sigma = np.sqrt(
-        args.max_in_deg * args.num_times / 36 / args.snr
-        )
+    sigma = np.sqrt(max_in_deg*num_times/36/args.snr)
+    sigma_c = np.sqrt(args.gamma)*sigma
+    sigma_b = np.sqrt(1-args.gamma)*sigma
     adj_mat_file = args.adjmat
     if args.create:
         # Generate a random adjacency matrix file.
@@ -78,18 +68,19 @@ def main(argv):
             )
         np.savetxt(adj_mat_file, adj_mat)
     gen_planted_edge_data(
-        args.num_genes, adj_mat_file, sigma, args.num_experiments,
-        args.exp, args.design, args.num_replicates, args.num_times,
-        args.rand_seed
+        args.num_genes, adj_mat_file, sigma_c, sigma_b,
+        args.num_cond, args.exp, args.design, args.num_rep,
+        num_times, rand_seed, method=args.method
         )
     return
 
 
 def gen_planted_edge_data(
-        num_genes, adj_mat_file, sigma, num_experiments, csv_exp_file,
-        csv_design_file, num_replicates, num_times, rand_seed
+        num_genes, adj_mat, sigma_c, sigma_b, num_experiments,
+        csv_exp_file, csv_design_file, num_replicates, num_times,
+        rand_seed, true_time=True, method='phi', noise=0.0
         ):
-    """Generate data from the planted-edge (Phi-network) model.
+    """Generate time-series data from the planted-edge (Phi-network) model.
 
     TODO: Add multifactorial perturbation with and without time series.
 
@@ -98,31 +89,55 @@ def gen_planted_edge_data(
     by Gaussian approximation.
 
     Args:
-        num_genes: Number of genes.  Should be at least as large
-            as the adjacency matrix.
-        adj_mat_file: Adjacency matrix file.  The (i, j)th
-            element is the regulation strength coefficient of
-            gene i over gene j.  Must be square.
-        sigma: Noise level.
+        num_genes: Number of genes.  Must be at least as large
+            as the number of rows (or columns) of the adjacency
+            matrix.  If num_genes is strictly larger than the
+            adjacency matrix, isolated genes are padded.
+        adj_mat: Adjacency matrix.
+            This variable can be either the path to the adjacency
+            matrix file as a str, or the matrix itself as a numpy
+            array.  The sign of the (i, j)th element for i not equal
+            to j indicates the type of regulation of j by i, and the
+            absolute value the strength of the regulation.  The
+            diagonal elements can be either self-regulation or
+            negative of the degradation rate.
+        sigma_c: Condition-dependent variation level.
+            If scalar, it applies to all genes.  Otherwise the
+            size must be equal to gene number and each element
+            applies to a single gene.
+        sigma_b: Condition-independent variation level.
+            If scalar, it applies to all genes.  Otherwise the
+            size must be equal to gene number and each element
+            applies to a single gene.
         num_experiments: Number of experiments.
         csv_exp_file: Path to output expression file.
+            Return the DataFrame if csv_exp_file is an empty string.
         csv_design_file: Path to output design file.
+            If an empty string, no design file is written.
+            If file exists, do not overwrite it.
         num_replicates: Number of replicates.
         num_times: Number of sample times.
         rand_seed: Seed for random number generation.  None for the
             default clock seed (see
             https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.random.RandomState.html#numpy.random.RandomState).
+        true_time: Indicator of using different individual for
+            each sample (i.e., one-shot sampling).
+        method: Dynamics.  Can be 'phi' for Phi-net dynamics or 'glm'
+            for Gaussian linear model dynamics.  Default is Phi-net.
+        noise: Observation noise level.
 
     Returns:
-        Write an expression file (csv_exp_file, if given) and a
-            design file (csv_design_file) in CSV format.
+        Write an expression file (csv_exp_file) and a
+        design file (csv_design_file, if given) in CSV format.
+
     """
     # Load adjacency matrix.
-    adj_mat = np.loadtxt(adj_mat_file, delimiter=' ')
+    if isinstance(adj_mat, str):
+        adj_mat = np.loadtxt(adj_mat, delimiter=' ')
     # Check size of adjacency matrix.
     num_genes_in_adj_mat = adj_mat.shape[0]
     if num_genes < num_genes_in_adj_mat:
-        print('The specified number of genes is smaller than the'
+        print('The specified number of genes is smaller than the '
               'size of the adjacency matrix.')
         return 1
     if num_genes > num_genes_in_adj_mat:
@@ -134,30 +149,20 @@ def gen_planted_edge_data(
     np.random.seed(rand_seed)
     expressions = []
     for i in range(num_experiments):
-        # Generate i.i.d. uniform expressions for all the genes at
-        # time 1.
-        x = np.random.rand(num_genes, 1, num_replicates)
-        for t in range(1, num_times):
-            x_t_minus_1 = x[:, t-1, :]
-            # Influence of the regulating genes with mean subtracted.
-            influence = (x_t_minus_1.T-0.5).dot(adj_mat)
-            # AWGN with noise level sigma.
-            noise = np.random.normal(
-                scale=sigma, size=(num_replicates, num_genes)
-                )
-            # Standard deviations of the sum of influence and noise.
-            sd_lin_expressions = np.sqrt(
-                np.diag(adj_mat.T.dot(adj_mat))/12 + sigma**2
-                )
-            # Standardization of the linear expressions is done via
-            # broadcasting.
-            standardized_lin_expressions = (
-                (influence+noise) / sd_lin_expressions
-                )
-            # Map the linear expressions back to [0, 1] by the CDF of
-            # standard Gaussian (a.k.a. the Phi function).
-            x_t = norm.cdf(standardized_lin_expressions).T
-            x = np.concatenate((x, x_t[:, np.newaxis, :]), axis=1)
+        # Generate the condition-dependent standard variation.
+        noise_c = np.random.randn(num_genes, num_times)
+        if true_time:
+            x = np.empty((num_genes, 0, num_replicates))
+            for t in range(1, num_times+1):
+                # Generate new independent trajectory up to time t.
+                x_rep = gen_traj(num_replicates, t, adj_mat, sigma_b,
+                                 sigma_c, noise_c, method)
+                x_sample = x_rep[:, -1, :]
+                x_sample_3d = x_sample[:, np.newaxis, :]
+                x = np.concatenate((x, x_sample_3d), axis=1)
+        else:
+            x = gen_traj(num_replicates, num_times, adj_mat, sigma_b,
+                         sigma_c, noise_c, method)
         expressions.append(x)
     # Output expression file.
     sample_ids = ['Sample'+str(i) for i in
@@ -172,9 +177,10 @@ def gen_planted_edge_data(
             ), axis=1)
     df = pd.DataFrame(data=flattened_exp, columns=sample_ids,
                       index=genes)
-    df.to_csv(csv_exp_file)
-    # Output design file.
-    if csv_design_file:
+    df = df+np.random.randn(*df.shape)*noise
+    # write design file if it is not empty str and it does not exist
+    # already.
+    if csv_design_file and not os.path.isfile(csv_design_file):
         with open(csv_design_file, 'w') as f:
             idx_sample = 0
             for i in range(num_experiments):
@@ -187,7 +193,110 @@ def gen_planted_edge_data(
                             +str(j)+'\n'
                             )
                         idx_sample += 1
-    return 0
+    if csv_exp_file:
+        df.to_csv(csv_exp_file)
+        return 0
+    else:
+        return df
+
+
+def phi_input(x_t_minus_1, adj_mat, sigma_b, sigma_c, noise_c_st,
+              method='phi'):
+    """Gene regulatory input function.
+
+    Args:
+        x_t_minus_1: An n-by-r array of expression levels at
+            time t-1, where n is the number of genes and r is
+            the number of replicates.
+        adj_mat: An n-by-n array of the adjacency matrix.
+        sigma_b: Condition-independent noise level.
+            If scalar, it applies to all genes.  Otherwise the
+            size must be equal to gene number and each element
+            applies to a single gene.
+        sigma_c: Condition-dependent noise level.
+            If scalar, it applies to all genes.  Otherwise the
+            size must be equal to gene number and each element
+            applies to a single gene.
+        noise_c_st: Standard condition-dependent noise.
+            An n-dim array.
+        method: Dynamic model.  Can be 'phi' or 'glm'.
+
+    Returns:
+        An n-by-r array of expression levels at time t.
+    """
+    num_genes, num_replicates = x_t_minus_1.shape
+    # Discrete AWGN with noise level or noise level array sigma_b.
+    # For array sigma_b, the following broadcasting happens:
+    #     standard_noise: R x n
+    #     sigma_b:            n
+    #     product:        R x n
+    # See https://docs.scipy.org/doc/numpy-1.13.0/user/basics.broadcasting.html
+    noise = (np.random.normal(size=(num_replicates, num_genes))
+             * np.asarray(sigma_b))
+    noise_c = (noise_c_st.reshape(1, num_genes)
+               * np.asarray(sigma_c))
+    if method == 'phi':
+        # Influence of the regulating genes with mean subtracted.
+        influence = (x_t_minus_1.T-0.5).dot(adj_mat)
+        # Standard deviations of the sum of influence and noise.
+        sd_lin_expressions = np.sqrt(
+            np.diag(adj_mat.T.dot(adj_mat))/12 + sigma_b**2
+            + sigma_c**2
+            )
+        # Standardization of the linear expressions is done via
+        # broadcasting.
+        standardized_lin_expressions = (
+            (influence+noise+noise_c) / sd_lin_expressions
+            )
+        # Map the linear expressions back to [0, 1] by the CDF of
+        # standard Gaussian (a.k.a. the Phi function).
+        x_t = norm.cdf(standardized_lin_expressions).T
+    else:
+        x_t = adj_mat.T.dot(x_t_minus_1)+noise.T+noise_c.T
+    return x_t
+
+
+def gen_traj(num_replicates, num_times, adj_mat, sigma_b,
+             sigma_c, noise_c, method='phi'):
+    """Generate a new conditionally independent trajectory from time 0 up
+    to time T.
+
+    The same condition-dependent noise is shared across the replicates.
+
+    Args:
+        num_replicates: Number of replicates.
+        num_times: Number of sample times.
+        adj_mat: An n-by-n array of the adjacency matrix.
+        sigma_b: Condition-independent noise level.
+            If scalar, it applies to all genes.  Otherwise the
+            size must be equal to gene number and each element
+            applies to a single gene.
+        sigma_c: Condition-dependent noise level.
+            If scalar, it applies to all genes.  Otherwise the
+            size must be equal to gene number and each element
+            applies to a single gene.
+        noise_c: Standard condition-dependent noise.  An n-by-T array.
+        method: Dynamic model.  Can be 'phi' or 'glm'.
+
+    Returns:
+        An n-by-T-by-r array of the expression level trajectory
+        for n genes and r replicates.
+
+    """
+    num_genes = adj_mat.shape[0]
+    if method == 'phi':
+        # Generate constant 1/2 expression levels for all genes at
+        # time 0 for the Phi-net model.
+        x = np.ones((num_genes, 1, num_replicates))/2
+    else:
+        # Generate constant 0 expression levels for all genes at
+        # time 0 for the Gaussian linear model.
+        x = np.zeros((num_genes, 1, num_replicates))
+    for t in range(1, num_times+1):
+        x_new = phi_input(x[:, t-1, :], adj_mat, sigma_b, sigma_c,
+                          noise_c[:, t-1], method)
+        x = np.concatenate((x, x_new[:, np.newaxis, :]), axis=1)
+    return x[:, 1:, :]
 
 
 def gen_adj_mat(num_genes, max_in_deg, margin, rand_seed):
@@ -196,7 +305,8 @@ def gen_adj_mat(num_genes, max_in_deg, margin, rand_seed):
     Assume the in-degree is uniformly distributed over 0, 1, 2,
     ..., max_in_deg.  Regulation strength coefficients are
     Gaussian shifted away from the origin by the margin with
-    variance one.
+    variance one.  No self regulation is generated; i.e., the diagonal
+    elements are zeros.
 
     Args:
         num_genes: The number of genes.
@@ -212,6 +322,7 @@ def gen_adj_mat(num_genes, max_in_deg, margin, rand_seed):
     Returns:
         A 2-d array of the adjacency matrix of the generated
         network.
+
     """
     adj_mat = np.zeros((num_genes, num_genes))
     np.random.seed(rand_seed)
