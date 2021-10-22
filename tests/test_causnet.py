@@ -80,6 +80,7 @@ class TestSampComp(unittest.TestCase):
             ),
         )
 
+    @unittest.skip("Legacy test.")
     def test_er_sampcomp(self):
         """Test ER graph sample complexity lower bound."""
         np.random.seed(0)

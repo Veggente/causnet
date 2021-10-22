@@ -26,7 +26,8 @@ import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 import matplotlib
-matplotlib.style.use('ggplot')
+
+matplotlib.style.use("ggplot")
 
 
 def main(argv):
@@ -45,8 +46,8 @@ def main(argv):
         metric bars.
     """
     graphml_file = {}
-    algs = argv[3].split(' ')
-    files = argv[0].split(' ')
+    algs = argv[3].split(" ")
+    files = argv[0].split(" ")
     for alg, g_file in zip(algs, files):
         graphml_file[alg] = g_file
     gt = argv[1]
@@ -87,7 +88,7 @@ def get_sas(decision, prior, self_edge=False):
     prior_flat = prior_flat[np.isfinite(prior_flat)]
     decision_flat = decision_flat[np.isfinite(decision_flat)]
     # True positive.
-    tp = sum(prior_flat*decision_flat > 0)
+    tp = sum(prior_flat * decision_flat > 0)
     # Number of detected edges.
     num_detect = sum(decision_flat != 0)
     # Positive.
@@ -97,22 +98,21 @@ def get_sas(decision, prior, self_edge=False):
     # True negative.
     tn = sum(np.logical_and(decision_flat == 0, prior_flat == 0))
     if p:
-        sens = tp/p
+        sens = tp / p
     else:
         sens = np.nan
     if num_detect:
-        acc = tp/num_detect
+        acc = tp / num_detect
     else:
         acc = np.nan
     if num_elem > p:
-        spec = tn/(num_elem-p)
+        spec = tn / (num_elem - p)
     else:
         spec = np.nan
     return sens, acc, spec
 
 
-def get_sas_list(graphml_file, adj_mat_file, thresholds,
-                 self_edge=False):
+def get_sas_list(graphml_file, adj_mat_file, thresholds, self_edge=False):
     """Get sensitivity, accuracy and specificity lists.
 
     Args:
@@ -132,27 +132,21 @@ def get_sas_list(graphml_file, adj_mat_file, thresholds,
             if any denominator is zero.
     """
     network = nx.read_graphml(graphml_file)
-    adj_mat = np.loadtxt(adj_mat_file, delimiter=' ')
+    adj_mat = np.loadtxt(adj_mat_file, delimiter=" ")
     num_genes_in_adj_mat = adj_mat.shape[0]
     num_genes = len(network.nodes())
     # Pad the adj matrix of extra genes with zeros.
     if num_genes > num_genes_in_adj_mat:
         adj_mat_big = np.zeros((num_genes, num_genes))
-        adj_mat_big[
-            :num_genes_in_adj_mat, :num_genes_in_adj_mat
-            ] = adj_mat
+        adj_mat_big[:num_genes_in_adj_mat, :num_genes_in_adj_mat] = adj_mat
         adj_mat = adj_mat_big
     sens_ls = []
     acc_ls = []
     spec_ls = []
-    net_sign = nx.adjacency_matrix(
-        network, weight='sign'
-        ).toarray()
-    net_weight = nx.adjacency_matrix(
-        network, weight='weight'
-        ).toarray()
+    net_sign = nx.adjacency_matrix(network, weight="sign").toarray()
+    net_weight = nx.adjacency_matrix(network, weight="weight").toarray()
     # Reconstructed network with signed weight.
-    net_sign_wt = net_sign*net_weight
+    net_sign_wt = net_sign * net_weight
     # Ternary network of the ground truth with 1, -1 and 0.
     gt_tern = np.sign(adj_mat)
     for th in thresholds:
@@ -166,8 +160,15 @@ def get_sas_list(graphml_file, adj_mat_file, thresholds,
     return sens_ls, acc_ls, spec_ls
 
 
-def plot_sas(graphml_file, gt, thresholds, self_edge=False,
-             plots=False, output='output', metrics='all'):
+def plot_sas(
+    graphml_file,
+    gt,
+    thresholds,
+    self_edge=False,
+    plots=False,
+    output="output",
+    metrics="all",
+):
     """Plot the precision-recall curve and the ROC curve.
 
     Args:
@@ -193,63 +194,58 @@ def plot_sas(graphml_file, gt, thresholds, self_edge=False,
     algs = graphml_file.keys()
     fig1, ax1 = plt.subplots()
     fig2, ax2 = plt.subplots()
-    if metrics == 'none':
+    if metrics == "none":
         metric_list = []
-    elif metrics == 'all':
-        metric_list = ['auas', 'auss', 'best-f1', 'vusas']
+    elif metrics == "all":
+        metric_list = ["auas", "auss", "best-f1", "vusas"]
     else:
         metric_list = list(metrics)
     if metric_list:
         metric_display_names = {
-            'auas': 'APR',
-            'auss': 'AROC',
-            'best-f1': 'Best-F1',
-            'vusas': 'VUSAS'
-            }
+            "auas": "APR",
+            "auss": "AROC",
+            "best-f1": "Best-F1",
+            "vusas": "VUSAS",
+        }
         fig3, ax3 = plt.subplots()
         ind = np.arange(len(metric_list))
-        width = 0.4/len(algs)
+        width = 0.4 / len(algs)
         rects = []
         offset = 0
     for alg in graphml_file:
-        sas = get_sas_list(graphml_file[alg], gt,
-                           thresholds, self_edge)
-        ax1.plot(sas[0], sas[1], '-o', markerfacecolor='none')
-        ax2.plot([1-x for x in sas[2]], sas[0], '-o',
-                 markerfacecolor='none')
+        sas = get_sas_list(graphml_file[alg], gt, thresholds, self_edge)
+        ax1.plot(sas[0], sas[1], "-o", markerfacecolor="none")
+        ax2.plot([1 - x for x in sas[2]], sas[0], "-o", markerfacecolor="none")
         if metric_list:
             metric_vals = []
             for metric in metric_list:
                 metric_vals.append(get_metric(sas, metric))
-            rects.append(ax3.bar(ind+offset*width, metric_vals,
-                                 width))
+            rects.append(ax3.bar(ind + offset * width, metric_vals, width))
             offset += 1
     if metric_list:
-        ax3.set_ylabel('Metrics')
-        ax3.set_title('Performance of network inference '
-                      'algorithms')
-        ax3.set_xticks(ind+width/2*(len(algs)-1))
-        ax3.set_xticklabels([metric_display_names[m]
-                             for m in metric_list])
+        ax3.set_ylabel("Metrics")
+        ax3.set_title("Performance of network inference " "algorithms")
+        ax3.set_xticks(ind + width / 2 * (len(algs) - 1))
+        ax3.set_xticklabels([metric_display_names[m] for m in metric_list])
         ax3.legend(tuple(r[0] for r in rects), algs)
     ax1.legend(algs)
-    ax1.set_title('PR curve')
-    ax1.set_xlabel('Recall')
-    ax1.set_ylabel('Precision')
+    ax1.set_title("PR curve")
+    ax1.set_xlabel("Recall")
+    ax1.set_ylabel("Precision")
     ax2.legend(algs)
-    ax2.set_title('ROC curve')
-    ax2.set_xlabel('False positive rate')
-    ax2.set_ylabel('Recall')
+    ax2.set_title("ROC curve")
+    ax2.set_xlabel("False positive rate")
+    ax2.set_ylabel("Recall")
     if plots:
         fig1.show()
         fig2.show()
         if metric_list:
             fig3.show()
     if output:
-        fig1.savefig(output+'-pr.pdf')
-        fig2.savefig(output+'-roc.pdf')
+        fig1.savefig(output + "-pr.pdf")
+        fig2.savefig(output + "-roc.pdf")
         if metric_list:
-            fig3.savefig(output+'-metrics.pdf')
+            fig3.savefig(output + "-metrics.pdf")
     return
 
 
@@ -275,25 +271,29 @@ def get_metric(sas, metric):
     Returns:
         The value for the selected metric.
     """
-    assert(len(sas[0]) == len(sas[1]) == len(sas[2]))
+    assert len(sas[0]) == len(sas[1]) == len(sas[2])
     sens = np.array(sas[0])
     acc = np.array(sas[1])
     spec = np.array(sas[2])
     if (
         # No data points at all.
-        not len(sens) or
+        not len(sens)
+        or
         # No positives so sensitivity is not defined.
-        np.isnan(sens).any() or
+        np.isnan(sens).any()
+        or
         # Metric involves accuracy, and it is not defined at any
         # data point.
-        metric in ['auas', 'vusas', 'best-f1'] and
-            np.isnan(acc).all() or
+        metric in ["auas", "vusas", "best-f1"]
+        and np.isnan(acc).all()
+        or
         # Metric involves specificity, and it is not defined.
-        metric in ['auss', 'vusas'] and np.isnan(spec).any()
-        ):
+        metric in ["auss", "vusas"]
+        and np.isnan(spec).any()
+    ):
         # Metric is not defined.
         return np.nan
-    if metric == 'best-f1':
+    if metric == "best-f1":
         # Harmonic mean with possibly NaNs.
         f1 = hmean(acc, sens)
         return max(f1[np.isfinite(f1)])
@@ -302,15 +302,15 @@ def get_metric(sas, metric):
     acc = np.append(acc, acc[-1])
     sens = np.append(sens, 0)
     spec = np.append(spec, spec[-1])
-    if metric == 'auas':
+    if metric == "auas":
         # The integration is nonpositive because the sensitivity
         # sequence is assumed to be nonincreasing.
         return -integrate_lin(sens, acc)
-    if metric == 'auss':
+    if metric == "auss":
         return -integrate_lin(sens, spec)
-    if metric == 'vusas':
-        return -integrate_lin(sens, acc*spec)
-    print('Unknown metric.')
+    if metric == "vusas":
+        return -integrate_lin(sens, acc * spec)
+    print("Unknown metric.")
     sys.exit(1)
     return
 
@@ -328,13 +328,12 @@ def hmean(a, b):
     """
     c = []
     for i in range(len(a)):
-        if (np.isnan(a[i]) or np.isnan(b[i]) or
-            a[i] < 0 or b[i] < 0):
+        if np.isnan(a[i]) or np.isnan(b[i]) or a[i] < 0 or b[i] < 0:
             c.append(np.nan)
         elif not a[i] or not b[i]:
             c.append(0)
         else:
-            c.append(2/(1/a[i]+1/b[i]))
+            c.append(2 / (1 / a[i] + 1 / b[i]))
     return np.array(c)
 
 
@@ -352,9 +351,7 @@ def integrate_lin(x, y):
     """
     x_finite = x[np.isfinite(y)]
     y_finite = y[np.isfinite(y)]
-    return np.inner(
-        x_finite[1:]-x_finite[:-1], (y_finite[1:]+y_finite[:-1])/2
-        )
+    return np.inner(x_finite[1:] - x_finite[:-1], (y_finite[1:] + y_finite[:-1]) / 2)
 
 
 def get_error_rate(decision, prior, self_edge=False):
@@ -383,16 +380,15 @@ def get_error_rate(decision, prior, self_edge=False):
     prior_flat = prior_flat[np.isfinite(prior_flat)]
     decision_flat = decision_flat[np.isfinite(decision_flat)]
     # True positive.
-    tp = sum(prior_flat*decision_flat > 0)
+    tp = sum(prior_flat * decision_flat > 0)
     # True negative.
     tn = sum(np.logical_and(decision_flat == 0, prior_flat == 0))
     # Total number of elements.
     num_elem = len(prior_flat)
-    return 1-(tp+tn)/num_elem
+    return 1 - (tp + tn) / num_elem
 
 
-def get_error_rate_from_file(graphml_file, adj_mat_file,
-                             self_edge=False):
+def get_error_rate_from_file(graphml_file, adj_mat_file, self_edge=False):
     """Get error rate from GraphML file.
 
     Args:
@@ -408,24 +404,18 @@ def get_error_rate_from_file(graphml_file, adj_mat_file,
         Error rate.
     """
     network = nx.read_graphml(graphml_file)
-    adj_mat = np.loadtxt(adj_mat_file, delimiter=' ')
+    adj_mat = np.loadtxt(adj_mat_file, delimiter=" ")
     num_genes_in_adj_mat = adj_mat.shape[0]
     num_genes = len(network.nodes())
     # Pad the adj matrix of extra genes with zeros.
     if num_genes > num_genes_in_adj_mat:
         adj_mat_big = np.zeros((num_genes, num_genes))
-        adj_mat_big[
-            :num_genes_in_adj_mat, :num_genes_in_adj_mat
-            ] = adj_mat
+        adj_mat_big[:num_genes_in_adj_mat, :num_genes_in_adj_mat] = adj_mat
         adj_mat = adj_mat_big
-    net_sign = nx.adjacency_matrix(
-        network, weight='sign'
-        ).toarray()
-    net_weight = nx.adjacency_matrix(
-        network, weight='weight'
-        ).toarray()
+    net_sign = nx.adjacency_matrix(network, weight="sign").toarray()
+    net_weight = nx.adjacency_matrix(network, weight="weight").toarray()
     # Reconstructed network with signed weight.
-    net_sign_wt = net_sign*net_weight
+    net_sign_wt = net_sign * net_weight
     # Ternary network of the ground truth with 1, -1 and 0.
     gt_tern = np.sign(adj_mat)
     net_tern = np.array(net_sign_wt, copy=True)
@@ -434,8 +424,7 @@ def get_error_rate_from_file(graphml_file, adj_mat_file,
     return error_rate
 
 
-def get_instability(graphml_file_1, graphml_file_2,
-                    self_edge=False):
+def get_instability(graphml_file_1, graphml_file_2, self_edge=False):
     """Get instability from two GraphML files.
 
     The two networks should have binary weights with signs
@@ -455,21 +444,13 @@ def get_instability(graphml_file_1, graphml_file_2,
     network_1 = nx.read_graphml(graphml_file_1)
     network_2 = nx.read_graphml(graphml_file_2)
     num_genes = len(network_1.nodes())
-    net_sign_1 = nx.adjacency_matrix(
-        network_1, weight='sign'
-        ).toarray()
-    net_sign_2 = nx.adjacency_matrix(
-        network_2, weight='sign'
-        ).toarray()
-    net_weight_1 = nx.adjacency_matrix(
-        network_1, weight='weight'
-        ).toarray()
-    net_weight_2 = nx.adjacency_matrix(
-        network_2, weight='weight'
-        ).toarray()
+    net_sign_1 = nx.adjacency_matrix(network_1, weight="sign").toarray()
+    net_sign_2 = nx.adjacency_matrix(network_2, weight="sign").toarray()
+    net_weight_1 = nx.adjacency_matrix(network_1, weight="weight").toarray()
+    net_weight_2 = nx.adjacency_matrix(network_2, weight="weight").toarray()
     # Reconstructed network with signed weight.
-    net_sign_wt_1 = net_sign_1*net_weight_1
-    net_sign_wt_2 = net_sign_2*net_weight_2
+    net_sign_wt_1 = net_sign_1 * net_weight_1
+    net_sign_wt_2 = net_sign_2 * net_weight_2
     net_tern_1 = np.array(net_sign_wt_1, copy=True)
     net_tern_1 = np.sign(net_tern_1)
     net_tern_2 = np.array(net_sign_wt_2, copy=True)

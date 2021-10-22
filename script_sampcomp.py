@@ -574,7 +574,9 @@ def bhatta_samp_rate_fixed_data(
             )
             for i in range(samp_power_range[1], samp_power_range[0] + 1)
         ]
-        plt.semilogx(samp_rates, bhatta, "-o", label=r"$\sigma_t^2 = ${}".format(this_var))
+        plt.semilogx(
+            samp_rates, bhatta, "-o", label=r"$\sigma_t^2 = ${}".format(this_var)
+        )
     plt.xlabel("sampling rate")
     plt.ylabel("Bhattacharyya coefficient")
     plt.legend(loc="best")

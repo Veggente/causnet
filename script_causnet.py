@@ -3,13 +3,14 @@ from typing import Tuple, Dict, Any, Callable, Optional, List
 import inspect
 import json
 from itertools import product
+import importlib
 import numpy as np
 import matplotlib.pyplot as plt
 import sampcomp
 import causnet_bslr
 from lasso import lasso_grn
-import network_bc
 
+importlib.import_module("net-inf-eval.network_bc")
 plt.style.use("ggplot")
 
 
@@ -55,9 +56,15 @@ class Script:
             for i, j in product(range(num_genes), repeat=2):
                 if i <= j:
                     bc_list.append(
-                        np.array(network_bc.bc_4_perturbation(
-                            adj_mat_ter, (i, j), spec_rad, num_times - 1, **filter_kwargs(kwargs, network_bc.bc_4_perturbation)
-                        ))
+                        np.array(
+                            network_bc.bc_4_perturbation(
+                                adj_mat_ter,
+                                (i, j),
+                                spec_rad,
+                                num_times - 1,
+                                **filter_kwargs(kwargs, network_bc.bc_4_perturbation)
+                            )
+                        )
                         ** 2
                     )
             avg_bc = np.mean(bc_list, axis=0)
@@ -275,12 +282,24 @@ class Script:
                     symbol = "--x"
                 else:
                     raise ValueError("Unknown algorithm.")
-                plt.plot(fpr, tpr, symbol, color="C{}".format(idx), label=alg + r", $\rho = $" + str(spec_rad))
+                plt.plot(
+                    fpr,
+                    tpr,
+                    symbol,
+                    color="C{}".format(idx),
+                    label=alg + r", $\rho = $" + str(spec_rad),
+                )
             if bc2_dict:
                 fpr_full = np.linspace(0, 1)
                 bc2_fpr_diff = np.sqrt(bc2_dict[spec_rad]) - np.sqrt(fpr_full)
                 abs_bound = 1 - (bc2_fpr_diff * (bc2_fpr_diff >= 0)) ** 2
-                plt.plot(fpr_full, abs_bound, "-.", color="C{}".format(idx), label=r"BC bound, $\rho = $" + str(spec_rad))
+                plt.plot(
+                    fpr_full,
+                    abs_bound,
+                    "-.",
+                    color="C{}".format(idx),
+                    label=r"BC bound, $\rho = $" + str(spec_rad),
+                )
         plt.legend(loc="best")
         plt.xlabel("false positive rate")
         plt.ylabel("true positive rate")
