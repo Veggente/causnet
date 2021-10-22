@@ -14,3 +14,6 @@ qsub-output/
 /bhatta-bound-a0.8-s0-d0.5.eps
 /bhatta-bound-a0.8-s1-d0.1.eps
 /bhatta_bound.eps
+!design.csv
+!expressions.csv
+!gene-list.csv
