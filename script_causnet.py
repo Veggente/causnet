@@ -3,13 +3,14 @@ from typing import Tuple, Dict, Any, Callable, Optional, List
 import inspect
 import json
 from itertools import product
+import importlib
 import numpy as np
 import matplotlib.pyplot as plt
 import sampcomp
 import causnet_bslr
 from lasso import lasso_grn
-import network_bc
 
+importlib.import_module("net-inf-eval.network_bc")
 plt.style.use("ggplot")
 
 
