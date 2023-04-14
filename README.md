@@ -1,5 +1,6 @@
+![CausNet](/logo/causnet-144ppi.png)
 # CausNet
-A Causal Inference Algorithm for Gene Regulatory Network Reconstruction
+A Causal Inference Algorithm for Gene Regulatory Network Reconstruction.
 
 ## Introduction
 CausNet recovers the gene regulatory network from time-series gene expression data.
